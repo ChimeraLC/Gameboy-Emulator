@@ -60,6 +60,8 @@ uint8_t opcode;                 // Current opcode
 // Random values
 uint8_t *r1;
 uint8_t *r2;
+uint8_t n;
+uint16_t nn;
 
 
 int
@@ -117,6 +119,12 @@ read_mem(uint16_t addr)
 }
 
 void
+write_mem(uint16_t addr, uint8_t val)
+{
+        memory[addr] = val;
+}
+
+void
 cycle()
 {
         opcode = read_mem(PC++);
@@ -131,8 +139,15 @@ cycle()
                 switch(opcode & 0x0F) {
                         case 0x0:       // NOP
                         break;
+                        case 0x1:       // LD BC, nn                            // TODO: little endian?
+                        reg.c = read_mem(PC++);
+                        reg.b = read_mem(PC++);
+                        break;
                         case 0x6:       // LD B, n
                         reg.b = read_mem(PC++);
+                        break;
+                        case 0x8:       // LD (nn),SP
+                        (void) 0;
                         break;
                         case 0xE:       // LD C, n
                         reg.c = read_mem(PC++);
@@ -141,8 +156,16 @@ cycle()
                 break;
                 case 0x10:
                 switch(opcode & 0x0F) {
+                        case 0x1:       // LD DE, nn                            // TODO: little endian?
+                        reg.e = read_mem(PC++);
+                        reg.d = read_mem(PC++);
+                        break;
                         case 0x6:       // LD D, n
                         reg.d = read_mem(PC++);
+                        break;
+                        case 0x8:       // JR n
+                        n = read_mem(PC);                                       // TODO: adding different types?
+                        PC += n;
                         break;
                         case 0xE:      // LD E, n
                         reg.e = read_mem(PC++);
@@ -151,8 +174,32 @@ cycle()
                 break;
                 case 0x20:
                 switch(opcode & 0x0F) {
+                        case 0x0:       // JR NZ, n
+                        n = read_mem(PC++);
+                        if (!(reg.f & 0x8)) {                                   // Check if flag math is right
+                                PC += n;                                        // Adding different types?
+                        }
+                        break;
+                        case 0x1:       // LD HL, nn                            // TODO: little endian?
+                        reg.l = read_mem(PC++);
+                        reg.h = read_mem(PC++);
+                        break;
+                        case 0x2:      // LDD (HL), A
+                        write_mem(reg.hl, reg.a);
+                        reg.hl = reg.hl + 1;                                    // TODO: perhaps this needs to be stricter?
+                        break;
                         case 0x6:      // LD H, n
                         reg.h = read_mem(PC++);
+                        break;
+                        case 0x8:       // JR Z, n
+                        n = read_mem(PC++);
+                        if (reg.f & 0x8) {                                      // Check if flag math is right
+                                PC += n;                                        // Adding different types?
+                        }
+                        break;
+                        case 0xA:      // LDD A, (HL)
+                        reg.a = read_mem(reg.hl);
+                        reg.hl = reg.hl + 1;                                    // TODO: perhaps this needs to be stricter?
                         break;
                         case 0xE:      // LD L, n
                         reg.l = read_mem(PC++);
@@ -161,21 +208,76 @@ cycle()
                 break;
                 case 0x30:
                 switch(opcode & 0x0F) {
+                        case 0x0:       // JR NC, n
+                        n = read_mem(PC++);
+                        if (!(reg.f & 0x1)) {                                   // Check if flag math is right
+                                PC += n;                                        // Adding different types?
+                        }
+                        break;
+                        case 0x1:       // LD SP, nn                            // TODO: little endian?
+                        SP = read_mem(PC++);
+                        SP |= read_mem(PC++) << 8;
+                        break;
+                        case 0x2:      // LDD (HL), A
+                        write_mem(reg.hl, reg.a);
+                        reg.hl = reg.hl - 1;                                    // TODO: perhaps this needs to be stricter?
+                        break;
                         case 0x6:      // LD HL, n
-                        reg.hl = read_mem(PC++);    // TODO: perhaps this needs to be stricter?
+                        reg.hl = read_mem(PC++);                                // TODO: perhaps this needs to be stricter?
+                        break;
+                        case 0x8:       // JR C, n
+                        n = read_mem(PC++);
+                        if (reg.f & 0x1) {                                      // Check if flag math is right
+                                PC += n;                                        // Adding different types?
+                        }
+                        break;
+                        case 0xA:      // LDD A, (HL)
+                        reg.a = read_mem(reg.hl);
+                        reg.hl = reg.hl - 1;                                    // TODO: perhaps this needs to be stricter?
+                        break;
                 }
                 break;
                 /*
                  * Catching all register to register LDs
                  */
                 case 0x40:
-                        //b or c
                 case 0x50:
-                        //d or e
-                case 0x60:
-                        //h or l
+                case 0x60:                                                      // TODO: fix this
                 case 0x70:
-                        //HL or a
+                switch (opcode * 0xF0) {
+                        case 0x40:
+                                if ((opcode * 2) & 0xF0) {      // Second half
+                                        r1 = &reg.c;
+                                }
+                                else {                          // First half
+                                        r1 = &reg.b;
+                                }
+                        break;
+                        case 0x50:
+                                if ((opcode * 2) & 0xF0) {      // Second half
+                                        r1 = &reg.e;
+                                }
+                                else {                          // First half
+                                        r1 = &reg.d;
+                                }
+                        break;
+                        case 0x60:
+                                if ((opcode * 2) & 0xF0) {      // Second half
+                                        r1 = &reg.l;
+                                }
+                                else {                          // First half
+                                        r1 = &reg.h;
+                                }
+                        break;
+                        case 0x70:
+                                if ((opcode * 2) & 0xF0) {      // Second half
+                                        r1 = &reg.a;
+                                }
+                                else {                          // First half
+                                        r1 = &reg.h;                            // TODO: Should be hl
+                                }
+                        break;
+                }
                 switch((opcode * 2) & 0xF){ // Pairing together 0-8, 1-9, etc.
                         case 0x0:
                         r2 = &reg.b;
@@ -196,37 +298,109 @@ cycle()
                         r2 = &reg.l;
                         break;
                         case 0xC:
-                        r2 = &reg.h;    // TODO: SHOULD BE HL
+                        r2 = &reg.h;                                            // TODO: SHOULD BE HL
                         break;
                         case 0xE:
                         r2 = &reg.a;
                         break;
                 }
+                *r1 = *r2;      // Moving contents of r2 into r1
                 break;
-                /*
-                // LD r1, r2
-                case 0x7F:              // LD A, A
-                reg.a = reg.a;
+                case 0x80:
                 break;
-                case 0x78:              // LD A, B
-                reg.a = reg.b;
+                case 0x90:
                 break;
-                case 0x79:              // LD A, C
-                reg.a = reg.c;
+                case 0xC0:
+                switch (opcode & 0x0F) {
+                        case 0x01:      // POP BC
+                        (void) 0;
+                        break;
+                        case 0x02:      // JP NZ, nn
+                        nn = read_mem(PC++);
+                        nn |= read_mem(PC++) << 8;
+                        if (!(reg.f & 0x8)) {                                    // TODO: check that this flag check is right
+                                PC = nn;
+                        }
+                        break;
+                        case 0x03:      // JP nn
+                        nn = read_mem(PC++);
+                        nn |= read_mem(PC++) << 8;
+                        PC = nn;
+                        case 0x05:      // PUSH BC
+                        (void) 0;
+                        break;
+                        case 0x0A:      // JP Z, nn
+                        nn = read_mem(PC++);
+                        nn |= read_mem(PC++) << 8;
+                        if (reg.f & 0x8) {                                    // TODO: check that this flag check is right
+                                PC = nn;
+                        }
+                        break;
+                }
                 break;
-                case 0x7A:              // LD A, D
-                reg.a = reg.d;
+                case 0xD0:
+                switch (opcode & 0x0F) {
+                        case 0x01:      // POP DE
+                        (void) 0;
+                        break;
+                        case 0x02:      // JP NC, nn
+                        nn = read_mem(PC++);
+                        nn |= read_mem(PC++) << 8;
+                        if (!(reg.f & 0x1)) {                                    // TODO: check that this flag check is right
+                                PC = nn;
+                        }
+                        break;
+                        case 0x05:      // PUSH DE
+                        (void) 0;
+                        break;
+                        case 0x0A:      // JP C, nn
+                        nn = read_mem(PC++);
+                        nn |= read_mem(PC++) << 8;
+                        if (reg.f & 0x1) {                                    // TODO: check that this flag check is right
+                                PC = nn;
+                        }
+                        break;
+                }
                 break;
-                case 0x7B:              // LD A, E
-                reg.a = reg.e;
+                case 0xE0:
+                switch (opcode & 0x0F) {       
+                        case 0x00:      // LDH (n), A
+                        write_mem(read_mem(PC++) | 0xFF00, reg.a);
+                        break;
+                        case 0x01:      // POP HL
+                        (void) 0;
+                        break;
+                        case 0x02:      // LD A, (C)
+                        write_mem(reg.c | 0xFF00, reg.a);
+                        break;
+                        case 0x05:      // PUSH HL
+                        (void) 0;
+                        break;
+                        case 0x09:      // JP HL
+                        PC = reg.hl;
+                        break;
+                }
                 break;
-                case 0x7C:              // LD A, H
-                reg.a = reg.h;
+                case 0xF0:
+                switch (opcode & 0x0F) {
+                        case 0x00:      // LDH A, (n)
+                        reg.a = read_mem(read_mem(PC++) | 0xFF00);
+                        break;
+                        case 0x01:      // POP AF
+                        (void) 0;
+                        break;
+                        case 0x02:      // LD (C), A
+                        reg.a = read_mem(reg.c | 0xFF00);
+                        break;
+                        case 0x05:      // PUSH AF
+                        (void) 0;
+                        break;
+                        case 0x08:      // LDHL SP,n
+                        (void) 0;
+                        case 0x09:      // LD SP, HL
+                        SP = reg.hl;
+                        break;
+                }
                 break;
-                case 0x7D:              // LD A, L
-                reg.a = reg.l;
-                break;
-                */
-
         }
 }
