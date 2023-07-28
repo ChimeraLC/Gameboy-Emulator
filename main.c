@@ -108,7 +108,9 @@ main(int argc, char **argv)
 void
 init()
 {
-
+        memset(memory, 0, 0x2000);
+        PC = 0x0000;
+        SP = 0xFFFE;
         return;
 }
 
@@ -176,7 +178,7 @@ cycle()
                 switch(opcode & 0x0F) {
                         case 0x0:       // JR NZ, n
                         n = read_mem(PC++);
-                        if (!(reg.f & 0x8)) {                                   // Check if flag math is right
+                        if (!(reg.f & 0x80)) {                                   // Check if flag math is right
                                 PC += n;                                        // Adding different types?
                         }
                         break;
@@ -193,7 +195,7 @@ cycle()
                         break;
                         case 0x8:       // JR Z, n
                         n = read_mem(PC++);
-                        if (reg.f & 0x8) {                                      // Check if flag math is right
+                        if (reg.f & 0x80) {                                      // Check if flag math is right
                                 PC += n;                                        // Adding different types?
                         }
                         break;
@@ -210,7 +212,7 @@ cycle()
                 switch(opcode & 0x0F) {
                         case 0x0:       // JR NC, n
                         n = read_mem(PC++);
-                        if (!(reg.f & 0x1)) {                                   // Check if flag math is right
+                        if (!(reg.f & 0x10)) {                                   // Check if flag math is right
                                 PC += n;                                        // Adding different types?
                         }
                         break;
@@ -227,7 +229,7 @@ cycle()
                         break;
                         case 0x8:       // JR C, n
                         n = read_mem(PC++);
-                        if (reg.f & 0x1) {                                      // Check if flag math is right
+                        if (reg.f & 0x10) {                                      // Check if flag math is right
                                 PC += n;                                        // Adding different types?
                         }
                         break;
@@ -312,13 +314,19 @@ cycle()
                 break;
                 case 0xC0:
                 switch (opcode & 0x0F) {
+                        case 0x00:      // RET NZ
+                        if (!(reg.f & 0x80)) {
+                                nn = read_mem(SP++);
+                                nn |= read_mem(SP++) << 8;
+                                PC = nn;
+                        }
                         case 0x01:      // POP BC
                         (void) 0;
                         break;
                         case 0x02:      // JP NZ, nn
                         nn = read_mem(PC++);
                         nn |= read_mem(PC++) << 8;
-                        if (!(reg.f & 0x8)) {                                    // TODO: check that this flag check is right
+                        if (!(reg.f & 0x80)) {                                    // TODO: check that this flag check is right
                                 PC = nn;
                         }
                         break;
@@ -326,39 +334,125 @@ cycle()
                         nn = read_mem(PC++);
                         nn |= read_mem(PC++) << 8;
                         PC = nn;
+                        break;
+                        case 0x04:      // Call NZ, nn
+                        nn = read_mem(PC++);
+                        nn |= read_mem(PC++) << 8;
+                        if (!(reg.f & 0x80)) {
+                                write_mem(--SP, PC >> 8);
+                                write_mem(--SP, PC & 0x00FF);
+                        }
                         case 0x05:      // PUSH BC
                         (void) 0;
+                        break;
+                        case 0x07:      // RST 00
+                        write_mem(--SP, PC >> 8);
+                        write_mem(--SP, PC & 0x00FF);
+                        PC = 0x0000;
+                        break;
+                        case 0x08:      // RET Z
+                        if (reg.f & 0x80) {
+                                nn = read_mem(SP++);
+                                nn |= read_mem(SP++) << 8;
+                                PC = nn;
+                        }
+                        break;
+                        case 0x09:      // RET
+                        nn = read_mem(SP++);
+                        nn |= read_mem(SP++) << 8;
+                        PC = nn;
                         break;
                         case 0x0A:      // JP Z, nn
                         nn = read_mem(PC++);
                         nn |= read_mem(PC++) << 8;
-                        if (reg.f & 0x8) {                                    // TODO: check that this flag check is right
+                        if (reg.f & 0x80) {                                    // TODO: check that this flag check is right
                                 PC = nn;
                         }
+                        break;
+                        case 0x0C:      // Call Z, nn
+                        nn = read_mem(PC++);
+                        nn |= read_mem(PC++) << 8;
+                        if (reg.f & 0x80) {
+                                write_mem(--SP, PC >> 8);
+                                write_mem(--SP, PC & 0x00FF);
+                        }
+                        break;
+                        case 0x0D:      // CALL nn
+                        nn = read_mem(PC++);
+                        nn |= read_mem(PC++) << 8;
+                        write_mem(--SP, PC >> 8);
+                        write_mem(--SP, PC & 0x00FF);
+                        PC = nn;
+                        break;
+                        case 0x0F:      // RST 08
+                        write_mem(--SP, PC >> 8);
+                        write_mem(--SP, PC & 0x00FF);
+                        PC = 0x0008;
                         break;
                 }
                 break;
                 case 0xD0:
                 switch (opcode & 0x0F) {
+                        case 0x00:      // RET NC
+                        if (!(reg.f & 0x10)) {
+                                nn = read_mem(SP++);
+                                nn |= read_mem(SP++) << 8;
+                                PC = nn;
+                        }
                         case 0x01:      // POP DE
                         (void) 0;
                         break;
                         case 0x02:      // JP NC, nn
                         nn = read_mem(PC++);
                         nn |= read_mem(PC++) << 8;
-                        if (!(reg.f & 0x1)) {                                    // TODO: check that this flag check is right
+                        if (!(reg.f & 0x10)) {                                    // TODO: check that this flag check is right
                                 PC = nn;
+                        }
+                        break;
+                        case 0x04:      // Call NC, nn
+                        nn = read_mem(PC++);
+                        nn |= read_mem(PC++) << 8;
+                        if (!(reg.f & 0x10)) {
+                                write_mem(--SP, PC >> 8);
+                                write_mem(--SP, PC & 0x00FF);
                         }
                         break;
                         case 0x05:      // PUSH DE
                         (void) 0;
                         break;
+                        case 0x07:      // RST 10
+                        write_mem(--SP, PC >> 8);
+                        write_mem(--SP, PC & 0x00FF);
+                        PC = 0x0010;
+                        break;
+                        case 0x08:      // RET C
+                        if (reg.f & 0x10) {
+                                nn = read_mem(SP++);
+                                nn |= read_mem(SP++) << 8;
+                                PC = nn;
+                        }
+                        case 0x09:      // RETI
+                        (void) 0;
+                        break;
                         case 0x0A:      // JP C, nn
                         nn = read_mem(PC++);
                         nn |= read_mem(PC++) << 8;
-                        if (reg.f & 0x1) {                                    // TODO: check that this flag check is right
+                        if (reg.f & 0x10) {                                    // TODO: check that this flag check is right
                                 PC = nn;
                         }
+                        break;
+                        case 0x0C:      // Call C, nn
+                        nn = read_mem(PC++);
+                        nn |= read_mem(PC++) << 8;
+                        if (reg.f & 0x10) {
+                                write_mem(--SP, PC >> 8);
+                                write_mem(--SP, PC & 0x00FF);
+                        }
+                        break;
+                        case 0x0F:      // RST 18
+                        write_mem(--SP, PC >> 8);
+                        write_mem(--SP, PC & 0x00FF);
+                        PC = 0x0018;
                         break;
                 }
                 break;
@@ -376,8 +470,18 @@ cycle()
                         case 0x05:      // PUSH HL
                         (void) 0;
                         break;
+                        case 0x07:      // RST 20
+                        write_mem(--SP, PC >> 8);
+                        write_mem(--SP, PC & 0x00FF);
+                        PC = 0x0020;
+                        break;
                         case 0x09:      // JP HL
                         PC = reg.hl;
+                        break;
+                        case 0x0F:      // RST 28
+                        write_mem(--SP, PC >> 8);
+                        write_mem(--SP, PC & 0x00FF);
+                        PC = 0x0028;
                         break;
                 }
                 break;
@@ -395,10 +499,20 @@ cycle()
                         case 0x05:      // PUSH AF
                         (void) 0;
                         break;
+                        case 0x07:      // RST 30
+                        write_mem(--SP, PC >> 8);
+                        write_mem(--SP, PC & 0x00FF);
+                        PC = 0x0030;
+                        break;
                         case 0x08:      // LDHL SP,n
                         (void) 0;
                         case 0x09:      // LD SP, HL
                         SP = reg.hl;
+                        break;
+                        case 0x0F:      // RST 38
+                        write_mem(--SP, PC >> 8);
+                        write_mem(--SP, PC & 0x00FF);
+                        PC = 0x0038;
                         break;
                 }
                 break;
