@@ -124,10 +124,44 @@ void
 write_mem(uint16_t addr, uint8_t val)
 {
         memory[addr] = val;
+        switch (addr & 0xF000) {
+                case 0x0000:
+                break;
+                case 0x1000:
+                break;
+                case 0x2000:
+                break;
+                case 0x3000:
+                break;
+                case 0x4000:
+                break;
+                case 0x5000:
+                break;
+                case 0x6000:
+                break;
+                case 0x7000:
+                break;
+                case 0x8000:
+                break;
+                case 0x9000:
+                break;
+                case 0xA000:
+                break;
+                case 0xB000:
+                break;
+                case 0xC000:
+                break;
+                case 0xD000:
+                break;
+                case 0xE000:
+                break;
+                case 0xF000:
+                break;
+        }
 }
 
 void
-cycle()
+cycle()                                                                         // TODO: fix references to (HL) to be accurate
 {
         opcode = read_mem(PC++);
 
@@ -149,7 +183,10 @@ cycle()
                         reg.b = read_mem(PC++);
                         break;
                         case 0x8:       // LD (nn),SP
-                        (void) 0;
+                        nn = read_mem(PC++);
+                        nn |= read_mem(PC++) << 8;
+                        write_mem(nn, SP & 0xFF);
+                        write_mem(++nn, SP >> 4);                               // Check if the endianess is correct
                         break;
                         case 0xE:       // LD C, n
                         reg.c = read_mem(PC++);
@@ -309,8 +346,359 @@ cycle()
                 *r1 = *r2;      // Moving contents of r2 into r1
                 break;
                 case 0x80:
+                switch (opcode & 0x0F) {
+                        case 0x00:      // ADD A, B
+                        nn = reg.a + reg.b;
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f &= ~(0x70);
+                        if ((reg.a ^ reg.b ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x01:      // ADD A, C
+                        nn = reg.a + reg.c;
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f &= ~(0x70);
+                        if ((reg.a ^ reg.c ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x02:      // ADD A, D
+                        nn = reg.a + reg.d;
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f &= ~(0x70);
+                        if ((reg.a ^ reg.d ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x03:      // ADD A, E
+                        nn = reg.a + reg.e;
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f &= ~(0x70);
+                        if ((reg.a ^ reg.e ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x04:      // ADD A, H
+                        nn = reg.a + reg.h;
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f &= ~(0x70);
+                        if ((reg.a ^ reg.h ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x05:      // ADD A, L
+                        nn = reg.a + reg.l;
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f &= ~(0x70);
+                        if ((reg.a ^ reg.l ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x06:      // ADD A, (HL)
+                        n = read_mem(reg.hl);
+                        nn = reg.a + n;
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f &= ~(0x70);
+                        if ((reg.a ^ n ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x07:      // ADD A, A
+                        nn = reg.a + reg.a;
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f &= ~(0x70);
+                        if ((reg.a ^ reg.a ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x08:      // ADC A, B
+                        nn = reg.a + reg.b + ((reg.f >> 4) & 0x1);
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f &= ~(0x70);
+                        if ((reg.a ^ reg.b ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x09:      // ADC A, C
+                        nn = reg.a + reg.c + ((reg.f >> 4) & 0x1);
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f &= ~(0x70);
+                        if ((reg.a ^ reg.c ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x0A:      // ADC A, D
+                        nn = reg.a + reg.d + ((reg.f >> 4) & 0x1);
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f &= ~(0x70);
+                        if ((reg.a ^ reg.d ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x0B:      // ADC A, E
+                        nn = reg.a + reg.e + ((reg.f >> 4) & 0x1);
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f &= ~(0x70);
+                        if ((reg.a ^ reg.e ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x0C:      // ADC A, H
+                        nn = reg.a + reg.h + ((reg.f >> 4) & 0x1);
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f &= ~(0x70);
+                        if ((reg.a ^ reg.h ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x0D:      // ADC A, L
+                        nn = reg.a + reg.l + ((reg.f >> 4) & 0x1);
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f &= ~(0x70);
+                        if ((reg.a ^ reg.l ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x0E:      // ADC A, (HL)
+                        n = read_mem(reg.hl);
+                        nn = reg.a + n + ((reg.f >> 4) & 0x1);
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f &= ~(0x70);
+                        if ((reg.a ^ n ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x0F:      // ADC A, A
+                        nn = reg.a + reg.a + ((reg.f >> 4) & 0x1);
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f &= ~(0x70);
+                        if ((reg.a ^ reg.a ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                }
                 break;
                 case 0x90:
+                switch (opcode & 0x0F) {
+                        case 0x00:      // SUB B
+                        nn = reg.a - reg.b;
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f |= 0x40;
+                        reg.f &= ~(0x30);
+                        if ((reg.a ^ reg.b ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x01:      // SUB C
+                        nn = reg.a - reg.c;
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f |= 0x40;
+                        reg.f &= ~(0x30);
+                        if ((reg.a ^ reg.c ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x02:      // SUB D
+                        nn = reg.a - reg.d;
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f |= 0x40;
+                        reg.f &= ~(0x30);
+                        if ((reg.a ^ reg.d ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x03:      // SUB E
+                        nn = reg.a - reg.e;
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f |= 0x40;
+                        reg.f &= ~(0x30);
+                        if ((reg.a ^ reg.e ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x04:      // SUB H
+                        nn = reg.a - reg.h;
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f |= 0x40;
+                        reg.f &= ~(0x30);
+                        if ((reg.a ^ reg.h ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x05:      // SUB L
+                        nn = reg.a - reg.l;
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f |= 0x40;
+                        reg.f &= ~(0x30);
+                        if ((reg.a ^ reg.l ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x06:      // SUB (HL)
+                        n = read_mem(reg.hl);
+                        nn = reg.a - n;
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f |= 0x40;
+                        reg.f &= ~(0x30);
+                        if ((reg.a ^ n ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                        case 0x07:      // SUB A
+                        nn = reg.a - reg.a;
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f |= 0x40;
+                        reg.f &= ~(0x30);
+                        if ((reg.a ^ reg.a ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
+                }
                 break;
                 case 0xC0:
                 switch (opcode & 0x0F) {
@@ -320,8 +708,11 @@ cycle()
                                 nn |= read_mem(SP++) << 8;
                                 PC = nn;
                         }
+                        break;
                         case 0x01:      // POP BC
-                        (void) 0;
+                        nn = read_mem(SP++);
+                        nn |= read_mem(SP++) << 8;
+                        reg.bc = nn;
                         break;
                         case 0x02:      // JP NZ, nn
                         nn = read_mem(PC++);
@@ -342,8 +733,25 @@ cycle()
                                 write_mem(--SP, PC >> 8);
                                 write_mem(--SP, PC & 0x00FF);
                         }
+                        break;
                         case 0x05:      // PUSH BC
-                        (void) 0;
+                        write_mem(--SP, reg.b);
+                        write_mem(--SP, reg.c);
+                        break;
+                        case 0x06:      // ADD A, #
+                        n = read_mem(PC++);
+                        nn = reg.a + n;
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f &= ~(0x70);
+                        if ((reg.a ^ n ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
                         break;
                         case 0x07:      // RST 00
                         write_mem(--SP, PC >> 8);
@@ -389,6 +797,21 @@ cycle()
                         write_mem(--SP, PC & 0x00FF);
                         PC = 0x0008;
                         break;
+                        case 0x0E:      // ADC A, #
+                        n = read_mem(PC++);
+                        nn = reg.a + n + ((reg.f >> 4) & 0x1);
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f &= ~(0x70);
+                        if ((reg.a ^ n ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
+                        break;
                 }
                 break;
                 case 0xD0:
@@ -399,8 +822,11 @@ cycle()
                                 nn |= read_mem(SP++) << 8;
                                 PC = nn;
                         }
+                        break;
                         case 0x01:      // POP DE
-                        (void) 0;
+                        nn = read_mem(SP++);
+                        nn |= read_mem(SP++) << 8;
+                        reg.de = nn;
                         break;
                         case 0x02:      // JP NC, nn
                         nn = read_mem(PC++);
@@ -418,7 +844,24 @@ cycle()
                         }
                         break;
                         case 0x05:      // PUSH DE
-                        (void) 0;
+                        write_mem(--SP, reg.d);
+                        write_mem(--SP, reg.e);
+                        break;
+                        case 0x06:      // SUB #
+                        n = read_mem(PC++);
+                        nn = reg.a - n;
+                        if ((nn & 0xFF) == 0) {
+                                reg.f |= 0x80;
+                        }
+                        reg.f |= 0x40;
+                        reg.f &= ~(0x30);
+                        if ((reg.a ^ n ^ nn) & 0x10) {
+                                reg.f |= 0x20;
+                        }
+                        if (nn & 0xFF00) {
+                                reg.f |= 0x10;
+                        }
+                        reg.a = nn & 0xFF;
                         break;
                         case 0x07:      // RST 10
                         write_mem(--SP, PC >> 8);
@@ -462,13 +905,16 @@ cycle()
                         write_mem(read_mem(PC++) | 0xFF00, reg.a);
                         break;
                         case 0x01:      // POP HL
-                        (void) 0;
+                        nn = read_mem(SP++);
+                        nn |= read_mem(SP++) << 8;
+                        reg.hl = nn;
                         break;
                         case 0x02:      // LD A, (C)
                         write_mem(reg.c | 0xFF00, reg.a);
                         break;
                         case 0x05:      // PUSH HL
-                        (void) 0;
+                        write_mem(--SP, reg.h);
+                        write_mem(--SP, reg.l);
                         break;
                         case 0x07:      // RST 20
                         write_mem(--SP, PC >> 8);
@@ -491,13 +937,16 @@ cycle()
                         reg.a = read_mem(read_mem(PC++) | 0xFF00);
                         break;
                         case 0x01:      // POP AF
-                        (void) 0;
+                        nn = read_mem(SP++);
+                        nn |= read_mem(SP++) << 8;
+                        reg.af = nn;                                            // Is this legal?
                         break;
                         case 0x02:      // LD (C), A
                         reg.a = read_mem(reg.c | 0xFF00);
                         break;
                         case 0x05:      // PUSH AF
-                        (void) 0;
+                        write_mem(--SP, reg.a);
+                        write_mem(--SP, reg.f);                                 // Is this legal? (force reg.f & 0xF to be 0?)
                         break;
                         case 0x07:      // RST 30
                         write_mem(--SP, PC >> 8);
