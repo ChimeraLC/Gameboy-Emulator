@@ -100,10 +100,14 @@ uint8_t IE;                     // Interrupt Enable
 uint8_t IF;                     // Interrupt Flag
 uint8_t HALT;                   // HALT flag
 
+// I/O flags
+uint8_t *BIOS_FLAG = &IOR[0x50];
+
 // Random values
 uint8_t *r1;
 uint8_t *r2;
 uint8_t n;
+uint8_t n2;
 uint16_t nn;
 uint32_t nnnn;
 bool active = true;
@@ -246,6 +250,10 @@ read_mem(uint16_t addr)
 {
         switch (addr & 0xF000) {
                 case 0x0000:
+                if (!(*BIOS_FLAG) && addr < 0x100) {
+                        return BIOS[addr];
+                }
+                __attribute__ ((fallthrough));                                  // Might want to fix this
                 case 0x1000:
                 case 0x2000:
                 case 0x3000:
@@ -407,6 +415,16 @@ execute()                                                                       
                         case 0x6:       // LD B, n
                         reg.b = read_mem(PC++);
                         break;
+                        case 0x7:       // RLCA
+                        reg.a = (reg.a >> 7 | reg.a << 1);
+                        reg.f &= ~(0xF0);
+                        if (reg.a == 0) {
+                                reg.f |= 0x80;
+                        }
+                        if (reg.a & 0x01) {
+                                reg.f |= 0x10;
+                        }
+                        break;
                         case 0x8:       // LD (nn),SP
                         nn = read_mem(PC++);
                         nn |= read_mem(PC++) << 8;
@@ -451,10 +469,23 @@ execute()                                                                       
                         case 0xE:       // LD C, n
                         reg.c = read_mem(PC++);
                         break;
+                        case 0xF:       // RRCA
+                        reg.a = ((reg.a << 7) | (reg.a >> 1));
+                        reg.f &= ~(0xF0);
+                        if (reg.a == 0) {
+                                reg.f |= 0x80;
+                        }
+                        if (reg.a & 0x80) {
+                                reg.f |= 0x10;
+                        }
+                        break;
                 }
                 break;
                 case 0x10:
                 switch(opcode & 0x0F) {
+                        case 0x0:       // STOP
+                        (void) 0;
+                        break;
                         case 0x1:       // LD DE, nn                            // TODO: little endian?
                         reg.e = read_mem(PC++);
                         reg.d = read_mem(PC++);
@@ -485,6 +516,17 @@ execute()                                                                       
                         break;
                         case 0x6:       // LD D, n
                         reg.d = read_mem(PC++);
+                        break;
+                        case 0x7:       // RLA
+                        n = reg.a;
+                        reg.a = reg.a << 1 | ((reg.f & 0x10) >> 4);
+                        reg.f &= ~(0xF0);
+                        if (reg.a == 0) {
+                                reg.f |= 0x80;
+                        }
+                        if (n & 0x80) {
+                                reg.f |= 0x10;
+                        }
                         break;
                         case 0x8:       // JR n
                         n = read_mem(PC);                                       // TODO: adding different types?
@@ -527,6 +569,17 @@ execute()                                                                       
                         break;
                         case 0xE:      // LD E, n
                         reg.e = read_mem(PC++);
+                        break;
+                        case 0xF:       // RRA
+                        n = reg.a;
+                        reg.a = reg.a >> 1 | ((reg.f & 0x10) << 3);
+                        reg.f &= ~(0xF0);
+                        if (reg.a == 0) {
+                                reg.f |= 0x80;
+                        }
+                        if (n & 0x01) {
+                                reg.f |= 0x10;
+                        }
                         break;
                 }
                 break;
@@ -572,6 +625,9 @@ execute()                                                                       
                         break;
                         case 0x6:      // LD H, n
                         reg.h = read_mem(PC++);
+                        break;
+                        case 0x7:       // DAA
+                        (void) 0;
                         break;
                         case 0x8:       // JR Z, n
                         n = read_mem(PC++);
@@ -621,6 +677,10 @@ execute()                                                                       
                         case 0xE:      // LD L, n
                         reg.l = read_mem(PC++);
                         break;
+                        case 0xF:       // CPL
+                        reg.a ^= 0xFF;
+                        reg.f |= 0x60;
+                        break;
                 }
                 break;
                 case 0x30:
@@ -668,6 +728,10 @@ execute()                                                                       
                         case 0x6:      // LD HL, n
                         reg.hl = read_mem(PC++);                                // TODO: perhaps this needs to be stricter?
                         break;
+                        case 0x7:       // SCF
+                        reg.f &= ~(0x60);
+                        reg.f |= 0x10;
+                        break;
                         case 0x8:       // JR C, n
                         n = read_mem(PC++);
                         if (reg.f & 0x10) {                                      // Check if flag math is right
@@ -689,10 +753,10 @@ execute()                                                                       
                         reg.a = read_mem(reg.hl);
                         reg.hl = reg.hl - 1;                                    // TODO: perhaps this needs to be stricter?
                         break;
-                        case 0x0B:      // DEC SP
+                        case 0xB:      // DEC SP
                         SP -= 1;
                         break;
-                        case 0x0C:      // INC A
+                        case 0xC:      // INC A
                         reg.a += 1;
                         reg.f &= ~(0xE0);
                         if (reg.a == 0) {
@@ -702,7 +766,7 @@ execute()                                                                       
                                 reg.f |= 0x20;
                         }
                         break;
-                        case 0x0D:      // DEC A
+                        case 0xD:      // DEC A
                         reg.a -= 1;
                         reg.f &= ~(0xE0);
                         if (reg.a == 0) {
@@ -713,6 +777,10 @@ execute()                                                                       
                                 reg.f |= 0x20;
                         }
                         break;
+                        case 0xF:       // CCF
+                        reg.f &= ~(0x60);
+                        reg.f ^= 0x10;
+                        break;
                 }
                 break;
                 /*
@@ -722,7 +790,11 @@ execute()                                                                       
                 case 0x50:
                 case 0x60:                                                      // TODO: fix this
                 case 0x70:
-                switch (opcode * 0xF0) {
+                if (opcode == 0x76){    // HALT                                 // Fix this as well
+                        (void) 0;
+                        return;
+                }
+                switch (opcode & 0xF0) {
                         case 0x40:
                                 if ((opcode * 2) & 0xF0) {      // Second half
                                         r1 = &reg.c;
@@ -1663,8 +1735,145 @@ execute()                                                                       
                                 break;
                         }
                         switch(cbcode & 0xF0) {
-                                case 0x30:      //SWAP n
-                                (void) 0;
+                                case 0x00:      
+                                switch (cbcode & 0x8) {
+                                        case 0x0:       // RLC n
+                                        n = (n << 1) | (n >> 7);
+                                        reg.f &= ~(0xF0);
+                                        if (n == 0) {
+                                                reg.f |= 0x80;
+                                        }
+                                        if (n & 0x01) {
+                                                reg.f |= 0x10;
+                                        }
+                                        break;
+                                        case 0x8:       // RRC n
+                                        n = (n >> 1) | (n << 7);
+                                        reg.f &= ~(0xF0);
+                                        if (n == 0) {
+                                                reg.f |= 0x80;
+                                        }
+                                        if (n & 0x80) {
+                                                reg.f |= 0x10;
+                                        }
+                                        break;
+                                }
+                                break;
+                                case 0x10:
+                                switch (cbcode & 0x8) {
+                                        case 0x0:       // RL n
+                                        n2 = n;
+                                        n = (n << 1) | (reg.f & 0x10 >> 4);
+                                        reg.f &= ~(0xF0);
+                                        if (n == 0) {
+                                                reg.f |= 0x80;
+                                        }
+                                        if (n2 & 0x80) {
+                                                reg.f |= 0x10;
+                                        }
+                                        break;
+                                        case 0x8:       // RR n
+                                        n2 = n;
+                                        n = (n >> 1) | (reg.f & 0x10 << 3);
+                                        reg.f &= ~(0xF0);
+                                        if (n == 0) {
+                                                reg.f |= 0x80;
+                                        }
+                                        if (n2 & 0x01) {
+                                                reg.f |= 0x10;
+                                        }
+                                        break;
+                                }
+                                break;
+                                case 0x20:
+                                switch (cbcode & 0x8) {                         // Check these?
+                                        case 0x0:       // SLA n
+                                        reg.f &= ~(0xF0);
+                                        if (n & 0x80) {
+                                                reg.f |= 0x10;
+                                        }
+                                        n = (n << 1);
+                                        if (n == 0) {
+                                                reg.f |= 0x80;
+                                        }
+                                        break;
+                                        case 0x8:       // SRA n
+                                        reg.f &= ~(0xF0);
+                                        if (n & 0x01) {
+                                                reg.f |= 0x10;
+                                        }
+                                        n = (n >> 1);
+                                        if (n == 0) {
+                                                reg.f |= 0x80;
+                                        }
+                                        if (n & 0x40) {
+                                                n |= 0x80;
+                                        }
+                                        break;
+                                }
+                                break;
+                                case 0x30:
+                                switch (cbcode & 0x8) {
+                                        case 0x0:      // SWAP n
+                                        n = ((n & 0xF0) >> 4) | ((n & 0x0F) << 4);
+                                        reg.f &= ~(0xF0);
+                                        if (n == 0) {
+                                                reg.f |= 0x80;
+                                        }
+                                        break;
+                                        case 0x8:       // SRL n
+                                        reg.f &= ~(0xF0);
+                                        if (n & 0x01) {
+                                                reg.f |= 0x10;
+                                        }
+                                        n = (n >> 1);
+                                        if (n == 0) {
+                                                reg.f |= 0x80;
+                                        }
+                                        break;
+                                }
+                        }
+                        // Bit opcodes
+                        if ((cbcode & 0xC0) == 0x40) {    // BIT b, r             // Check these calculations
+                                n2 = (cbcode >> 3) & 0x7;
+                                reg.f &= ~(0xE0);
+                                reg.f |= 0x20;
+                                if ((n >> n2) && 0x1) {
+                                        reg.f |= 0x80;
+                                }
+                        }
+                        if ((cbcode & 0xC0) == 0x80) {
+                                n2 = (cbcode >> 3) & 0x7;
+                                n |= (0x1 << n2);
+                        }
+                        if ((cbcode & 0xC0) == 0xC0) {
+                                n2 = (cbcode >> 3) & 0x7;
+                                n &= ~(0x1 << n2);
+                        }
+                        switch(cbcode & 0x07) { // Return to register           // TODO: might not always be needed
+                                case 0x00:
+                                reg.b = n;
+                                break;
+                                case 0x01:
+                                reg.c = n;
+                                break;
+                                case 0x02:
+                                reg.d = n;
+                                break;
+                                case 0x03:
+                                reg.e = n;
+                                break;
+                                case 0x04:
+                                reg.h = n;
+                                break;
+                                case 0x05:
+                                reg.l = n;
+                                break;
+                                case 0x06:
+                                write_mem(reg.hl, n);
+                                break;
+                                case 0x07:
+                                reg.a = n;
                                 break;
                         }
                         break;
@@ -1854,6 +2063,9 @@ execute()                                                                       
                         case 0x02:      // LD (C), A
                         reg.a = read_mem(reg.c | 0xFF00);
                         break;
+                        case 0x03:      // DI                                   // TODO: should be delayed?
+                        IME = 0;
+                        break;
                         case 0x05:      // PUSH AF
                         write_mem(--SP, reg.a);
                         write_mem(--SP, reg.f);                                 // Is this legal? (force reg.f & 0xF to be 0?)
@@ -1875,6 +2087,9 @@ execute()                                                                       
                         (void) 0;
                         case 0x09:      // LD SP, HL
                         SP = reg.hl;
+                        break;
+                        case 0x0B:      // EI                                   // TODO: should be delayed
+                        IME = 1;
                         break;
                         case 0x0E:      // CP #
                         nn = reg.a - reg.a;
