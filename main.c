@@ -9,9 +9,13 @@
  *      Constants definitions
  */
 #define ROM_ADDR 0x0000
+#define ROM_BANK_SIZE 0x4000
 #define VRAM_ADDR 0x8000
+#define VRAM_BANK_SIZE 0x2000
 #define ERAM_ADDR 0xA000
+#define ERAM_BANK_SIZE 0x2000
 #define WRAM_ADDR 0xC000
+#define WRAM_BANK_SIZE 0x1000
 #define OAM_ADDR 0xFE00
 #define IOR_ADDR 0xFF00
 #define HRAM_ADDR 0xFF80
@@ -28,8 +32,6 @@ uint8_t OAM[0xA0];      // Object Attribute Memory
 uint8_t IOR[0x80];      // I/O Registers
 uint8_t HRAM[0x7F];     // High RAM
 
-uint8_t rom_bank;       // Switchable ROM bank via mapper
-uint8_t vram_bank;      // Switchable VRAM bank 0/1 (CBG only)
 uint8_t eram_bank;      // Switchable ERAM bank if any
 uint8_t wram_bank;      // Switchable WRAM bank 1-7
 
@@ -100,8 +102,24 @@ uint8_t IE;                     // Interrupt Enable
 uint8_t IF;                     // Interrupt Flag
 uint8_t HALT;                   // HALT flag
 
+// Timer stuff
+uint8_t lcd_cycles;
+uint8_t cycles;
+uint16_t div_lower;
+uint16_t tima_lower;
+uint16_t tima_freq[] = {1024, 16, 64, 256}; 
+
 // I/O flags
 uint8_t *BIOS_FLAG = &IOR[0x50];
+
+// I/O other
+uint8_t joystick_flags;
+
+// MBC1 Mapper values
+uint8_t RAMG;                   // MBC1 RAM Gate Register
+uint8_t RBANK1;                 // MBC1 bank register 1
+uint8_t RBANK2;                 // MBC1 bank register 2
+uint8_t RMODE;                  // MBC1 mode register
 
 // Random values
 uint8_t *r1;
@@ -112,15 +130,27 @@ uint16_t nn;
 uint32_t nnnn;
 bool active = true;
 
+// SDL elements
+SDL_Window *window;
+SDL_Renderer *renderer;
+SDL_Texture *texture;
+uint32_t graphics[144][160];
+uint8_t graphics_raw[144][160];
+
 /*
  *      Function definitions
  */
 
 void init_mem();
+bool init_SDL();
 uint8_t read_mem(uint16_t addr);
 void write_mem(uint16_t addr, uint8_t val);
 void read_rom(char *filename);
 void execute();
+void update_lcd(uint8_t cycles);
+void update_timers(uint8_t cycles);
+void drawline_lcd();
+void update_SDL();
 
 int
 main(int argc, char **argv)
@@ -135,8 +165,9 @@ main(int argc, char **argv)
         init_mem();
 
         // Initialize SDL
+        init_SDL();
+        SDL_Event event;
 
-        
         // Loading game file
         char *filename = argv[1];
 
@@ -148,48 +179,132 @@ main(int argc, char **argv)
         // Emulating cycles
         while (active)
         {
-                // Handle interrupts
-                if (IME && (IE & IF)) {         // Check for correspondings flags
-                        // Put PC on stack
-                        write_mem(--SP, PC >> 8);
-                        write_mem(--SP, PC & 0xff);
-
-                        // Vblank
-                        if (IE & IF & 0x1) {
-                                PC = 0x40;
-                                IF &= ~(0x1);
-                        }
-
-                        // LCD STAT
-                        if (IE & IF & 0x2) {
-                                PC = 0x48;
-                                IF &= ~(0x2);
-                        }
-
-                        // Timer
-                        if (IE & IF & 0x4) {
-                                PC = 0x50;
-                                IF &= ~(0x4);
-                        }
-
-                        // Serial
-                        if (IE & IF & 0x8) {
-                                PC = 0x58;
-                                IF &= ~(0x8);
-                        }
-
-                        // Joypad
-                        if (IE & IF & 0x10) {
-                                PC = 0x60;
-                                IF &= ~(0x10);
+                // Get SDL events
+                while(SDL_PollEvent( &event ) ){
+                        switch( event.type ){
+                                case SDL_KEYDOWN:
+                                switch (event.key.keysym.sym){
+                                        case SDLK_ESCAPE:
+                                        active = false;
+                                        break;
+                                        case SDLK_RIGHT:
+                                        joystick_flags &= ~(0x1);
+                                        break;
+                                        case SDLK_LEFT:
+                                        joystick_flags &= ~(0x2);
+                                        break;
+                                        case SDLK_UP:
+                                        joystick_flags &= ~(0x4);
+                                        break;
+                                        case SDLK_DOWN:
+                                        joystick_flags &= ~(0x8);
+                                        break;
+                                        case SDLK_x:    // A Key
+                                        joystick_flags &= ~(0x10);
+                                        break;
+                                        case SDLK_z:    // B Key
+                                        joystick_flags &= ~(0x20);
+                                        break;
+                                        case SDLK_s:    // Select Key
+                                        joystick_flags &= ~(0x40);
+                                        break;
+                                        case SDLK_a:    // Start Key
+                                        joystick_flags &= ~(0x80);
+                                        break;
+                                }
+                                break;
+                                case SDL_KEYUP:
+                                switch( event.key.keysym.sym ){
+                                        case SDLK_RIGHT:
+                                        joystick_flags |= (0x1);
+                                        break;
+                                        case SDLK_LEFT:
+                                        joystick_flags |= (0x2);
+                                        break;
+                                        case SDLK_DOWN:
+                                        joystick_flags |= (0x4);
+                                        break;
+                                        case SDLK_UP:
+                                        joystick_flags |= (0x8);
+                                        break;
+                                        case SDLK_x:    // A Key
+                                        joystick_flags |= (0x10);
+                                        break;
+                                        case SDLK_z:    // B Key
+                                        joystick_flags |= (0x20);
+                                        break;
+                                        case SDLK_s:    // Select Key
+                                        joystick_flags |= (0x40);
+                                        break;
+                                        case SDLK_a:    // Start Key
+                                        joystick_flags |= (0x80);
+                                        break;
+                                
+                                }
+                                break;
                         }
                 }
 
-                opcode = read_mem(PC++);        // Read opcode
+                // Handle interrupts
+                if ((HALT || IME) && (IE & IF)) {         // Check for correspondings flags
+                        // Exit halt
+                        HALT = 1;
+                        
+                        if (IME) {
+                                IME = 0;
 
-                execute();                      // Execute current opcode
+                                // Put PC on stack
+                                write_mem(--SP, PC >> 8);
+                                write_mem(--SP, PC & 0xff);
 
+                                // Vblank
+                                if (IE & IF & 0x1) {
+                                        PC = 0x40;
+                                        IF &= ~(0x1);
+                                }
+
+                                // LCD STAT
+                                else if (IE & IF & 0x2) {
+                                        PC = 0x48;
+                                        IF &= ~(0x2);
+                                }
+
+                                // Timer
+                                else if (IE & IF & 0x4) {
+                                        PC = 0x50;
+                                        IF &= ~(0x4);
+                                }
+
+                                // Serial
+                                else if (IE & IF & 0x8) {
+                                        PC = 0x58;
+                                        IF &= ~(0x8);
+                                }
+
+                                // Joypad
+                                else if (IE & IF & 0x10) {
+                                        PC = 0x60;
+                                        IF &= ~(0x10);
+                                }
+                        }
+                }
+
+                if (!HALT) {                                                    // TODO: I don't think this is correct
+                        opcode = read_mem(PC++);        // Read opcode
+                        printf("opcode: %X, PC: %X\n", opcode, PC);
+                        sleep(1);
+
+                        cycles = 4;                                             // Align this
+
+                        execute();                      // Execute current opcode
+                }
                 // TODO: delay to sync hardware cycles
+
+                // Cycle implementation
+                update_lcd(cycles);
+                update_timers(cycles);
+
+                update_SDL();
         }
 
         return 1;
@@ -198,8 +313,6 @@ main(int argc, char **argv)
 void
 init_mem()
 {
-        /*
-
         memset(VRAM, 0, 0x2000);
         // Initial register and pointer values
         PC = 0x0000;
@@ -209,40 +322,72 @@ init_mem()
         reg.de = 0x00D8;
         reg.hl = 0x014D;
 
+
         // Initial memory values
-        memory[0xFF05] = 0x00;
-        memory[0xFF06] = 0x00;
-        memory[0xFF07] = 0x00;
-        memory[0xFF10] = 0x80;
-        memory[0xFF11] = 0xBF;
-        memory[0xFF12] = 0xF3;
-        memory[0xFF14] = 0xBF;
-        memory[0xFF16] = 0x3F;
-        memory[0xFF17] = 0x00;
-        memory[0xFF19] = 0xBF;
-        memory[0xFF1A] = 0x7F;
-        memory[0xFF1B] = 0xFF;
-        memory[0xFF1C] = 0x9F;
-        memory[0xFF1E] = 0xBF;
-        memory[0xFF20] = 0xFF;
-        memory[0xFF21] = 0x00;
-        memory[0xFF22] = 0x00;
-        memory[0xFF23] = 0xBF;
-        memory[0xFF24] = 0x77;
-        memory[0xFF25] = 0xF3;
-        memory[0xFF26] = 0xF1;
-        memory[0xFF40] = 0x91;
-        memory[0xFF42] = 0x00;
-        memory[0xFF43] = 0x00;
-        memory[0xFF45] = 0x00;
-        memory[0xFF47] = 0xFC;
-        memory[0xFF48] = 0xFF;
-        memory[0xFF49] = 0xFF;
-        memory[0xFF4A] = 0x00;
-        memory[0xFF4B] = 0x00;
-        memory[0xFFFF] = 0x00;
-        return;
-        */
+        //IOR[0x04] = 0xABCC;
+        div_lower = 0;
+        tima_lower = 0;
+        lcd_cycles = 0;
+
+        IOR[0x05] = 0x00;
+        IOR[0x06] = 0x00;
+        IOR[0x07] = 0x00;
+        IOR[0x10] = 0x80;
+        IOR[0x11] = 0xBF;
+        IOR[0x12] = 0xF3;
+        IOR[0x14] = 0xBF;
+        IOR[0x16] = 0x3F;
+        IOR[0x17] = 0x00;
+        IOR[0x19] = 0xBF;
+        IOR[0x1A] = 0x7F;
+        IOR[0x1B] = 0xFF;
+        IOR[0x1C] = 0x9F;
+        IOR[0x1E] = 0xBF;
+        IOR[0x20] = 0xFF;
+        IOR[0x21] = 0x00;
+        IOR[0x22] = 0x00;
+        IOR[0x23] = 0xBF;
+        IOR[0x24] = 0x77;
+        IOR[0x25] = 0xF3;
+        IOR[0x26] = 0xF1;
+        IOR[0x40] = 0x91;
+        IOR[0x42] = 0x00;
+        IOR[0x43] = 0x00;
+        IOR[0x45] = 0x00;
+        IOR[0x47] = 0xFC;
+        IOR[0x48] = 0xFF;
+        IOR[0x49] = 0xFF;
+        IOR[0x4A] = 0x00;
+        IOR[0x4B] = 0x00;
+        IE = 0x00;
+}
+
+/*
+ * Initializes the visual SDL elements, returns false if there is an error.
+ */
+bool
+init_SDL()
+{
+        // Initialize all SDL systems
+        if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
+                // Send message if fails
+                printf("error initializing SDL: %s\n", SDL_GetError());
+                return false;
+        }
+        // Create parts of window (64 by 32 pixels)
+        window = SDL_CreateWindow("Gameboy", 
+                                        SDL_WINDOWPOS_CENTERED,
+                                        SDL_WINDOWPOS_CENTERED,
+                                        800, 720, 0);
+
+        renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+        SDL_RenderSetLogicalSize(renderer, 160, 144);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); 
+
+        texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, 
+                                        SDL_TEXTUREACCESS_STREAMING, 64, 32);
+
+        return true; // Return true when there is no problem
 }
 
 uint8_t
@@ -257,21 +402,35 @@ read_mem(uint16_t addr)
                 case 0x1000:
                 case 0x2000:
                 case 0x3000:
-                return ROM[addr - ROM_ADDR];
+                if (RMODE & 0x1) {
+                        return ROM[addr + ((RBANK2 & 0x3) << 5) * ROM_BANK_SIZE];
+                }
+                else {
+                        return ROM[addr];
+                }
                 break;
                 case 0x4000:
                 case 0x5000:
                 case 0x6000:
-                case 0x7000:
-                return ROM[addr - ROM_ADDR + (rom_bank - 1) * 0x4000];
+                case 0x7000:                                                    // TODO: <16 mb roms
+                return ROM[addr - ROM_ADDR + 
+                    ((RBANK1 & 0x1F) + ((RBANK2 & 0x3) << 5) - 1) * 0x4000];          
                 break;
                 case 0x8000:
                 case 0x9000:
-                return VRAM[addr - VRAM_ADDR + (vram_bank) * 0x2000];
+                return VRAM[addr - VRAM_ADDR + (IOR[0x4F] & 0x1) * 0x2000];
                 break;
                 case 0xA000:
                 case 0xB000:
-                return ERAM[addr - ERAM_ADDR + (eram_bank) * 0x2000];
+                if ((RAMG & 0x0F) == 0x0A) {      // Check if RAM enabled
+                        if (RMODE & 0x1) {
+                                return ERAM[addr - ERAM_ADDR + (RBANK2 & 0x3) * ERAM_BANK_SIZE];
+                        }
+                        else {
+                                return ERAM[addr - ERAM_ADDR];
+                        }
+                }
+                return 0;
                 break;
                 case 0xC000:
                 return WRAM[addr - WRAM_ADDR];
@@ -287,10 +446,71 @@ read_mem(uint16_t addr)
                         return WRAM[addr - WRAM_ADDR + (wram_bank - 1) * 0x1000 - 0x2000];
                 if (addr < 0xFEA0)
                         return OAM[addr - OAM_ADDR];
-                if (addr < IOR_ADDR)
-                        return 1;
-                if (addr < HRAM_ADDR)
+                if (addr < IOR_ADDR)    // Unused memory
+                        return 0;
+                if (addr < HRAM_ADDR)  {  // I/O registers
+                        switch (addr & 0xFF) {
+                                case 0x00:      // Joystick Register
+                                return IOR[0x00] | 0xC0;
+                                break;
+                                case 0x04:      // DIV Timer
+                                return IOR[0x04];
+                                case 0x05:      // TIMA
+                                return IOR[0x05];
+                                case 0x06:      // TMA
+                                return IOR[0x06];
+                                break;
+                                case 0x07:       // TAC
+                                return IOR[0x07];
+                                break;
+                                case 0x40:      // LCDC
+                                return IOR[0x40];
+                                break;
+                                case 0x41:      // STAT
+                                if (IOR[0x40] & 0xF0) {
+                                        return IOR[0x44] | 0x87;
+                                }
+                                return (IOR[0x44] | 0x80) & ~(0x7);             // Check bitwise operations
+                                break;
+                                case 0x42:      // SCY
+                                return IOR[0x42];
+                                break;
+                                case 0x43:      // SCX
+                                return IOR[0x43];
+                                break;
+                                case 0x44:      // LY
+                                if (IOR[0x40] & 0xF0) {
+                                        return IOR[0x44];
+                                }
+                                return 0x00;
+                                break;
+                                case 0x45:      // LYC
+                                return (IOR[0x45]);
+                                break;
+                                case 0x47:      // BGP
+                                return IOR[0x47];
+                                break;
+                                case 0x48:      // OBP0
+                                return IOR[0x48];
+                                break;
+                                case 0x49:      // OBP1
+                                return IOR[0x49];
+                                break;
+                                case 0x4A:      // WY
+                                return (IOR[0x4A]);
+                                break;
+                                case 0x4B:      // WX
+                                return IOR[0x4B];
+                                break;
+                                case 0x70:      // SVBK
+                                return 0xFF;
+                                break;
+                                case 0x4F:      // VBK
+                                return 0xFE | IOR[0x4F];                                    // Potentially needs to fix
+                                break;
+                        }
                         return IOR[addr - IOR_ADDR];
+                }
                 if (addr < 0xFFFF)
                         return HRAM[addr - HRAM_ADDR];
                 return IE;
@@ -306,19 +526,26 @@ write_mem(uint16_t addr, uint8_t val)
         switch (addr & 0xF000) {
                 case 0x0000:
                 case 0x1000:
+                RAMG = val;
+                break;
                 case 0x2000:
                 case 0x3000:
-                return;
+                RBANK1 = val;
+                if (!(RBANK1 & 0x1F)) {
+                        RBANK1 |= 0x1;
+                }
                 break;
                 case 0x4000:
                 case 0x5000:
+                RBANK2 = val;
+                break;
                 case 0x6000:
                 case 0x7000:
-                return;
+                RMODE = val;
                 break;
                 case 0x8000:
                 case 0x9000:
-                VRAM[addr - VRAM_ADDR + (vram_bank) * 0x2000] = val;
+                VRAM[addr - VRAM_ADDR + (IOR[0x4F] & 0x1) * 0x2000] = val;
                 break;
                 case 0xA000:
                 case 0xB000:
@@ -340,8 +567,78 @@ write_mem(uint16_t addr, uint8_t val)
                         OAM[addr - OAM_ADDR] = val;
                 if (addr < IOR_ADDR)
                         return;
-                if (addr < HRAM_ADDR)
-                        IOR[addr - IOR_ADDR] = val;
+                if (addr < HRAM_ADDR)   // I/O Registers
+                        switch (addr & 0xFF) {
+                                case 0x00:      // Joystick registers
+                                IOR[0x00] = val & 0x30;
+                                IOR[0x00] |= 0xF;
+                                if (!(IOR[0x00] & 0x10)) {
+                                        IOR[0x00] &= joystick_flags | 0xF0;     // Check these calculations
+                                }
+                                if (!(IOR[0x00] & 0x20)) {
+                                        IOR[0x00] &= (joystick_flags >> 4) | 0xF0;
+                                }
+                                break;
+                                case 0x04:      // DIV timer
+                                IOR[0x04] = 0;
+                                break;
+                                case 0x05:      // TIMA
+                                IOR[0x05] = val;
+                                break;
+                                case 0x06:      // TMA
+                                IOR[0x06] = val;
+                                break;
+                                case 0x07:      // TAC
+                                IOR[0x07] = val;
+                                break;
+                                case 0x0F:      // IF register
+                                IF = val;
+                                break;
+                                case 0x40:      // LCDC
+                                IOR[0x40] = val;
+                                break;
+                                case 0x41:      // STAT
+                                IOR[0x45] &= ~(0x78);
+                                IOR[0x45] |= val & (0x78);
+                                break;
+                                case 0x42:      // SCY
+                                IOR[0x42] = val;
+                                break;
+                                case 0x43:      // SCY
+                                IOR[0x43] = val;
+                                break;
+                                case 0x44:      // LY
+                                break;
+                                case 0x45:      // LYC
+                                IOR[0x45] = val;
+                                break;
+                                case 0x46:      // OAM DMA Transfer
+                                for (uint8_t i = 0; i < 0xA0; i++) {            // TODO: check it doesn't exceed 0xDF?
+                                        OAM[i] = read_mem((val << 8) + i);
+                                }
+                                break;
+                                case 0x47:      // BGP
+                                IOR[0x47] = val;
+                                break;
+                                case 0x48:      // OBP0
+                                IOR[0x48] = val;
+                                break;
+                                case 0x49:      // OBP1
+                                IOR[0x49] = val;
+                                break;
+                                case 0x4A:      // WY
+                                IOR[0x4A] = val;
+                                break;
+                                case 0x4B:      // WX
+                                IOR[0x4B] = val;
+                                break;
+                                case 0x4F:      // VBK
+                                IOR[0x4F] = val;
+                                break;
+                                case 0x50:      // BOOT Rom
+                                IOR[0x50] = 1;
+                                break;
+                        }
                 if (addr < 0xFFFF)
                         HRAM[addr - HRAM_ADDR] = val;
                 IE = val;
@@ -376,6 +673,7 @@ execute()                                                                       
 {                                                                               // TODO: still missing misc, rotates, bit opcodes (3.3.5, 3.3.6, 3.3.7)
         // Halting
         if (opcode == 0x76) {
+                HALT = 1;
                 return;                 // HALT
         }
         switch (opcode & 0xF0)
@@ -790,10 +1088,6 @@ execute()                                                                       
                 case 0x50:
                 case 0x60:                                                      // TODO: fix this
                 case 0x70:
-                if (opcode == 0x76){    // HALT                                 // Fix this as well
-                        (void) 0;
-                        return;
-                }
                 switch (opcode & 0xF0) {
                         case 0x40:
                                 if ((opcode * 2) & 0xF0) {      // Second half
@@ -1525,7 +1819,7 @@ execute()                                                                       
                                 reg.f |= 0x20;
                         }
                         if (nn & 0xFF00) {
-                                reg.f |= 0x10;                                  // TODO: Sub and SRC and CP? set if no carry, vs set if carry?
+                                reg.f |= 0x10;                                  
                         }
                         break;
                         case 0x09:      // CP C
@@ -1974,8 +2268,12 @@ execute()                                                                       
                                 nn |= read_mem(SP++) << 8;
                                 PC = nn;
                         }
+                        break;
                         case 0x09:      // RETI
-                        (void) 0;
+			nn = read_mem(SP++);
+			nn |= read_mem(SP++) << 8;
+			PC = nn;
+			IME = 1;
                         break;
                         case 0x0A:      // JP C, nn
                         nn = read_mem(PC++);
@@ -2083,8 +2381,18 @@ execute()                                                                       
                         write_mem(--SP, PC & 0x00FF);
                         PC = 0x0030;
                         break;
-                        case 0x08:      // LDHL SP,n
-                        (void) 0;
+                        case 0x08:      // LDHL SP,n                            // TODO: check these calculations
+                        n2 = read_mem(PC++);
+                        nnnn = SP + n2;
+                        reg.f &= ~(0xF0);
+                        if ((n2 ^ SP ^ nnnn) & 0x1000) {
+                                reg.f |= 0x20;
+                        }
+                        if (nnnn & 0xFFFF0000) {
+                                reg.f |= 0x10;
+                        }                                                       // These in particular, docs are unclear
+                        reg.hl = nnnn & 0xFFFF;                                 // Casting?
+                        break;
                         case 0x09:      // LD SP, HL
                         SP = reg.hl;
                         break;
@@ -2113,4 +2421,238 @@ execute()                                                                       
                 }
                 break;
         }
+}
+
+void
+update_lcd(uint8_t cycles)
+{
+
+        lcd_cycles += cycles;
+        // Update every 456 cycles
+        if (lcd_cycles > 456) {
+                lcd_cycles -= 456;
+
+                // Interrupt check
+                IOR[0x41] &= ~(0x4);    //STAT comparison signal
+                if (IOR[0x44] == IOR[0x45]) {
+                        if (IOR[0x41] & 0x40) {
+                                IF |= 0x2;
+                        }
+                        IOR[0x41] |= 0x4;
+                }
+
+                // Increment 0x44
+                IOR[0x44] += 1;
+                IOR[0x44] %= 154;
+
+                // VBlank interrupt
+
+
+                // Something
+                if (IOR[0x44] < 144) {
+                        drawline_lcd();
+                }
+        }
+}
+
+uint16_t tile_map_addr;
+uint16_t tile_addr;
+uint16_t tile_line;
+uint8_t tile_x;
+uint8_t tile_y;
+uint8_t tile_1;
+uint8_t tile_2;
+uint8_t pixel_data;
+uint8_t row[160];
+void
+drawline_lcd()                                                                  // Seems very incorrect
+{
+
+
+        // Background
+        if (IOR[0x40] & 0x1) {
+                
+                
+                // Finding mapped tile
+                tile_map_addr = ((IOR[0x44] + IOR[0x42]) >> 3) * 32;        // Snapping to multiples of 8
+
+                if (IOR[0x8] & 0x10) {
+                        tile_map_addr += 0x9C00;
+                }
+                else {
+                        tile_map_addr += 0x9800;
+                }
+
+                // Finding tile addr
+                tile_addr = read_mem(tile_map_addr + (IOR[0x43] >> 3));
+
+                // Tile data area
+                if (IOR[0x40] & 0x10) {
+                        tile_addr = 0x8000 + tile_addr * 16;
+                }
+                else {
+                        tile_addr = 0x8800 + ((tile_addr + 128) % 0x100) * 16;
+                }
+
+                // X and Y positions within the tile
+                tile_y = ((IOR[0x44] + IOR[0x42]) & 0x7);
+                tile_x = IOR[0x43] & 0x07;
+
+                // Address corresponding to row
+                tile_addr += tile_y * 2;
+
+                // Getting tiles
+                tile_1 = read_mem(tile_addr);
+                tile_2 = read_mem(tile_addr + 1);
+
+                // Drawing the entire row
+                for (uint8_t x = 0; x < 160; x++) {
+
+                        // Getting data for the pixel
+                        pixel_data = ((tile_1 << tile_x) & 0x80) >> 7;
+                        pixel_data |= ((tile_2 << tile_x) & 0x80) >> 6;
+
+                        graphics_raw[IOR[0x44]][x] = pixel_data;
+
+                        tile_x ++;
+                        if (tile_x == 8) {      // Get next tile in row
+                                tile_addr = read_mem(tile_map_addr + (IOR[0x43] >> 3) + x + 1) + 2 * tile_y;
+
+                                // Tile data area
+                                if (IOR[0x40] & 0x10) {
+                                        tile_addr = 0x8000 + tile_addr * 16;
+                                }
+                                else {
+                                        tile_addr = 0x8800 + ((tile_addr + 128) % 0x100) * 16;
+                                }
+                                                
+                                // Getting tiles
+                                tile_1 = read_mem(tile_addr);
+                                tile_2 = read_mem(tile_addr + 1);
+
+                                tile_x = 0;
+                        }
+                }
+
+        }
+
+        // Window
+        if ((IOR[0x40] & 0x20) && (IOR[0x44] >= IOR[0x4A])) {                   // Including base bit 0 enable?
+                
+                // Finding mapped tile
+                tile_map_addr = (IOR[0x4A] >> 3) * 32;        // Snapping to multiples of 8
+
+                if (IOR[0x8] & 0x10) {
+                        tile_map_addr += 0x9C00;
+                }
+                else {
+                        tile_map_addr += 0x9800;
+                }
+
+                // Finding tile addr
+                tile_addr = read_mem(tile_map_addr + ((IOR[0x4B] - 7) >> 3));
+
+                // Tile data area
+                if (IOR[0x40] & 0x10) {
+                        tile_addr = 0x8000 + tile_addr * 16;
+                }
+                else {
+                        tile_addr = 0x8800 + ((tile_addr + 128) % 0x100) * 16;
+                }
+
+                // X and Y positions within the tile
+                tile_y = (IOR[0x4A] & 0x7);
+                tile_x = (IOR[0x4B] - 7) & 0x7;
+
+                // Address corresponding to row
+                tile_addr += tile_y * 2;
+
+                // Getting tiles
+                tile_1 = read_mem(tile_addr);
+                tile_2 = read_mem(tile_addr + 1);
+
+                // Drawing the entire row
+                for (uint8_t x = 0; x < 160 - (IOR[0x4B] - 7); x++) {           // Fix to properly aknowledge window placement
+
+                        // Getting data for the pixel
+                        pixel_data = ((tile_1 << tile_x) & 0x80) >> 7;
+                        pixel_data |= ((tile_2 << tile_x) & 0x80) >> 6;
+
+                        graphics_raw[IOR[0x44]][x + (IOR[0x4B] - 7)] = pixel_data;
+
+                        tile_x ++;
+                        if (tile_x == 8) {      // Get next tile in row
+                                tile_addr = read_mem(tile_map_addr + ((IOR[0x4B] - 7) >> 3) + x + 1) + 2 * tile_y;
+
+                                // Tile data area
+                                if (IOR[0x40] & 0x10) {
+                                        tile_addr = 0x8000 + tile_addr * 16;
+                                }
+                                else {
+                                        tile_addr = 0x8800 + ((tile_addr + 128) % 0x100) * 16;
+                                }
+                                                
+                                // Getting tiles
+                                tile_1 = read_mem(tile_addr);
+                                tile_2 = read_mem(tile_addr + 1);
+
+                                tile_x = 0;
+                        }
+                }
+        }
+
+        // Sprites
+        if (IOR[0x40] & 0x2) {
+
+        }
+}
+
+void
+update_timers(uint8_t cycles) 
+{
+
+        // DIV timer
+        div_lower += cycles;
+        if (div_lower > 256) {
+                div_lower -= 256;
+                IOR[0x04] += 1;
+        }
+
+        // TIMA timer                                                           // TODO: emulate timer issues? + delays
+        if (IOR[0x07] & 0x4) {
+                tima_lower += cycles;
+                if (tima_lower > tima_freq[IOR[0x07] & 0x3]) {
+                        tima_lower -= tima_freq[IOR[0x07] & 0x3];
+                        IOR[0x05] ++;
+                        if (IOR[0x05] == 0) {   // Overflow
+                                IOR[0x05] = IOR[0x06];
+                                IF |= 0x4;
+                        }
+                }
+        }
+}
+
+uint32_t colors[4] = {0, 1717986918, 2863311530, 4294967295};
+void update_SDL()
+{
+        // Filling pixels corresponding to graphics array
+        for (int i = 0; i < 144; i++) {
+                for (int j = 0; j < 160; j ++) {
+                        graphics[i][j] = colors[graphics_raw[i][j] & 0x3];
+                }
+        }
+
+        // Applying texture to screen
+        int texture_pitch = 0;
+        void* texture_pixels = NULL;
+        if (SDL_LockTexture(texture, NULL, &texture_pixels, &texture_pitch) != 0) {
+                SDL_Log("Unable to lock texture: %s", SDL_GetError());
+        }
+        else {
+                memcpy(texture_pixels, graphics, texture_pitch * 32);
+        }
+        SDL_UnlockTexture(texture);
+        SDL_RenderClear(renderer);
+        SDL_RenderCopy(renderer, texture, NULL, NULL);
+        SDL_RenderPresent(renderer);
 }
