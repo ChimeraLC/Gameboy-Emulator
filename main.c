@@ -10,7 +10,7 @@
 #include "gb_gpu.h"
 
 // Verbosity
-bool verbose = false;
+int verbose = 0;
 
 // Rom reading
 uint8_t *load_rom;           // ROM from cartridge
@@ -22,15 +22,11 @@ int cartridge_type = 0;
 // I/O other
 uint8_t joystick_flags;
 
-// SDL elements
-SDL_Window *window;
-SDL_Renderer *renderer;
-SDL_Texture *texture;
-uint32_t graphics[144][160];
-uint8_t graphics_raw[144][160];
-
 // If emulator is active
 bool active = true;
+
+// Cycle Emulation
+uint16_t curr_cycles;
 
 
 int
@@ -38,11 +34,14 @@ main(int argc, char **argv)
 {
         // Checking for verbose flag
         char c;
-        while ((c = getopt (argc, argv, "v")) != -1) {
+        while ((c = getopt (argc, argv, "vV")) != -1) {
                 switch (c)
                 {
                 case 'v':
                         verbose = 1;
+                        break;
+                case 'V':
+                        verbose = 2;
                         break;
                 default:
                         abort ();
@@ -147,11 +146,18 @@ main(int argc, char **argv)
                         }
                 }
 
+                // Align framerate
+                SDL_Delay(1);
+
                 // DO CPU STUFF
+                curr_cycles = execute();
+                update_timers(curr_cycles);
 
-
+                // Rendering
+                update_lcd(curr_cycles);
 
                 // UPDATE SDL
+                update_SDL();
         }
 
         return 1;
@@ -232,34 +238,6 @@ read_rom(char *filename)
         return 0;
 
 }
-
-int
-init_SDL()
-{
-        // Initialize all SDL systems
-        if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
-                // Send message if fails
-                printf("error initializing SDL: %s\n", SDL_GetError());
-                return false;
-        }
-        // Create parts of window (64 by 32 pixels)
-        window = SDL_CreateWindow("Gameboy", 
-                                        SDL_WINDOWPOS_CENTERED,
-                                        SDL_WINDOWPOS_CENTERED,
-                                        800, 720, 0);
-
-        renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-        SDL_RenderSetLogicalSize(renderer, 160, 144);
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); 
-
-        texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, 
-                                        SDL_TEXTUREACCESS_STREAMING, 64, 32);
-
-        return true; // Return true when there is no problem
-}
-
-
-
 
 /*
  *      Getter and Setter functions
