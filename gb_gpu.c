@@ -6,97 +6,12 @@
 #include <unistd.h>
 
 #include "main.h"
+#include "gb_cpu.h"
 #include "gb_gpu.h"
 
 
-// Timer stuff
-uint8_t lcd_cycles;
-uint8_t cycles;
-uint16_t div_lower;
-uint16_t tima_lower;
-uint16_t tima_freq[] = {1024, 16, 64, 256}; 
 
-void
-init_gpu()
-{
-        div_lower = 0;
-        tima_lower = 0;
-        lcd_cycles = 0;
-
-}
-
-/*      MISC STUFF
-
-void
-update_lcd(uint8_t cycles)
-{
-        if (IOR[0x44 & 0x80]) {
-                lcd_cycles += cycles;
-        }
-        // Update every 456 cycles
-        if (lcd_cycles > 456) {
-                lcd_cycles -= 456;
-
-                // Interrupt check
-                IOR[0x41] &= ~(0x4);    //STAT comparison signal
-                if (IOR[0x44] == IOR[0x45]) {
-                        if (IOR[0x41] & 0x40) {
-                                IF |= 0x2;
-                        }
-                        IOR[0x41] |= 0x4;
-                }
-                else {
-                        IOR[0x41] &= ~(0x4);
-                }
-
-                // Increment 0x44
-                IOR[0x44] += 1;
-                IOR[0x44] %= 154;
-
-                // normal line process
-                if (IOR[0x44 < 144]) {
-                        // LCD Stat mode
-                        IOR[0x41] = (IOR[0x41] & ~(0x3));
-
-
-                        if (IOR[0x41] & 0x10) { // HBLANK STAT interrupt
-                                IF |= 0x2;
-                        }
-                        
-                }
-                // VBlank interrupt
-                else if (IOR[0x44] = 144) {
-                        // LCD Stat mode
-                        IOR[0x41] = (IOR[0x41] & ~(0x3)) | 0x1;
-
-                                                                                // Increment frame?
-
-                        IF |= 0x1;      // Request interrupt
-
-                        if (IOR[0x41] & 0x10) { // VBLANK STAT interrupt 
-                                IF |= 0x2;
-                        }
-                }
-                
-        }
-        else if (lcd_cycles > 204) {
-                // LCD Stat mode
-                IOR[0x41] = (IOR[0x41] & ~(0x3)) | 0x2;
-
-
-                if (IOR[0x41] & 0x20) { // HBLANK STAT interrupt
-                        IF |= 0x2;
-                }
-        }
-        else if (lcd_cycles > 284)                                                                // Other states
-        {
-                // LCD Stat mode
-                IOR[0x41] = (IOR[0x41] & ~(0x3)) | 0x3;
-        
-                drawline_lcd();                                                 // Check that this is in frame / is repeated unecessarily?
-        } 
-}
-
+// Tileman Variables
 uint16_t tile_map_addr;
 uint16_t tile_addr;
 uint16_t tile_line;
@@ -106,19 +21,38 @@ uint8_t tile_1;
 uint8_t tile_2;
 uint8_t pixel_data;
 uint8_t row[160];
+uint8_t sprite_x;
+uint8_t sprite_y;
+uint8_t sprite_tile;
+uint8_t sprite_attr;
+
+
+// SDL elements
+SDL_Window *window;
+SDL_Renderer *renderer;
+SDL_Texture *texture;
+uint32_t graphics[144][160];
+uint8_t graphics_raw[144][160];
+
+void
+init_gpu()
+{
+}
+
 void
 drawline_lcd()                                                                  // Seems very incorrect
 {
-
-
+        if (verbose == 3) {
+                printf("Drawing line %d\n", get_IOR(0x44));
+        }
         // Background
-        if (IOR[0x40] & 0x1) {
+        if (get_IOR(0x40) & 0x1) {
                 
                 
                 // Finding mapped tile
-                tile_map_addr = ((IOR[0x44] + IOR[0x42]) >> 3) * 32;        // Snapping to multiples of 8
+                tile_map_addr = ((get_IOR(0x44) + get_IOR(0x42)) >> 3) * 32;        // Snapping to multiples of 8
 
-                if (IOR[0x8] & 0x10) {
+                if (get_IOR(0x8) & 0x10) {
                         tile_map_addr += 0x9C00;
                 }
                 else {
@@ -126,10 +60,10 @@ drawline_lcd()                                                                  
                 }
 
                 // Finding tile addr
-                tile_addr = read_mem(tile_map_addr + (IOR[0x43] >> 3));
+                tile_addr = read_mem(tile_map_addr + (get_IOR(0x43) >> 3));
 
                 // Tile data area
-                if (IOR[0x40] & 0x10) {
+                if (get_IOR(0x40) & 0x10) {
                         tile_addr = 0x8000 + tile_addr * 16;
                 }
                 else {
@@ -137,8 +71,8 @@ drawline_lcd()                                                                  
                 }
 
                 // X and Y positions within the tile
-                tile_y = ((IOR[0x44] + IOR[0x42]) & 0x7);
-                tile_x = IOR[0x43] & 0x07;
+                tile_y = ((get_IOR(0x44) + get_IOR(0x42)) & 0x7);
+                tile_x = get_IOR(0x43) & 0x07;
 
                 // Address corresponding to row
                 tile_addr += tile_y * 2;
@@ -154,14 +88,14 @@ drawline_lcd()                                                                  
                         pixel_data = ((tile_1 << tile_x) & 0x80) >> 7;
                         pixel_data |= ((tile_2 << tile_x) & 0x80) >> 6;
 
-                        graphics_raw[IOR[0x44]][x] = pixel_data;
+                        graphics_raw[get_IOR(0x44)][x] = pixel_data;
 
                         tile_x ++;
                         if (tile_x == 8) {      // Get next tile in row
-                                tile_addr = read_mem(tile_map_addr + (IOR[0x43] >> 3) + x + 1) + 2 * tile_y;
+                                tile_addr = read_mem(tile_map_addr + (get_IOR(0x43) >> 3) + x + 1) + 2 * tile_y;
 
                                 // Tile data area
-                                if (IOR[0x40] & 0x10) {
+                                if (get_IOR(0x40) & 0x10) {
                                         tile_addr = 0x8000 + tile_addr * 16;
                                 }
                                 else {
@@ -179,12 +113,12 @@ drawline_lcd()                                                                  
         }
 
         // Window
-        if ((IOR[0x40] & 0x20) && (IOR[0x44] >= IOR[0x4A])) {                   // Including base bit 0 enable?
+        if ((get_IOR(0x40) & 0x20) && (get_IOR(0x44) >= get_IOR(0x4A))) {                   // Including base bit 0 enable?
                 
                 // Finding mapped tile
-                tile_map_addr = (IOR[0x4A] >> 3) * 32;        // Snapping to multiples of 8
+                tile_map_addr = (get_IOR(0x4A) >> 3) * 32;        // Snapping to multiples of 8
 
-                if (IOR[0x8] & 0x10) {
+                if (get_IOR(0x8) & 0x10) {
                         tile_map_addr += 0x9C00;
                 }
                 else {
@@ -192,10 +126,10 @@ drawline_lcd()                                                                  
                 }
 
                 // Finding tile addr
-                tile_addr = read_mem(tile_map_addr + ((IOR[0x4B] - 7) >> 3));
+                tile_addr = read_mem(tile_map_addr + ((get_IOR(0x4B) - 7) >> 3));
 
                 // Tile data area
-                if (IOR[0x40] & 0x10) {
+                if (get_IOR(0x40) & 0x10) {
                         tile_addr = 0x8000 + tile_addr * 16;
                 }
                 else {
@@ -203,8 +137,8 @@ drawline_lcd()                                                                  
                 }
 
                 // X and Y positions within the tile
-                tile_y = (IOR[0x4A] & 0x7);
-                tile_x = (IOR[0x4B] - 7) & 0x7;
+                tile_y = (get_IOR(0x4A) & 0x7);
+                tile_x = (get_IOR(0x4B) - 7) & 0x7;
 
                 // Address corresponding to row
                 tile_addr += tile_y * 2;
@@ -214,20 +148,20 @@ drawline_lcd()                                                                  
                 tile_2 = read_mem(tile_addr + 1);
 
                 // Drawing the entire row
-                for (uint8_t x = 0; x < 160 - (IOR[0x4B] - 7); x++) {           // Fix to properly aknowledge window placement
+                for (uint8_t x = 0; x < 160 - (get_IOR(0x4B) - 7); x++) {           // Fix to properly aknowledge window placement
 
                         // Getting data for the pixel
                         pixel_data = ((tile_1 << tile_x) & 0x80) >> 7;
                         pixel_data |= ((tile_2 << tile_x) & 0x80) >> 6;
 
-                        graphics_raw[IOR[0x44]][x + (IOR[0x4B] - 7)] = pixel_data;
+                        graphics_raw[get_IOR(0x44)][x + (get_IOR(0x4B) - 7)] = pixel_data;
 
                         tile_x ++;
                         if (tile_x == 8) {      // Get next tile in row
-                                tile_addr = read_mem(tile_map_addr + ((IOR[0x4B] - 7) >> 3) + x + 1) + 2 * tile_y;
+                                tile_addr = read_mem(tile_map_addr + ((get_IOR(0x4B) - 7) >> 3) + x + 1) + 2 * tile_y;
 
                                 // Tile data area
-                                if (IOR[0x40] & 0x10) {
+                                if (get_IOR(0x40) & 0x10) {
                                         tile_addr = 0x8000 + tile_addr * 16;
                                 }
                                 else {
@@ -244,34 +178,105 @@ drawline_lcd()                                                                  
         }
 
         // Sprites
-        if (IOR[0x40] & 0x2) {
+        if (get_IOR(0x40) & 0x2) {
+                for (int i = 39; i > 0; i--) {  // Draw lower values on top
 
+                        sprite_y = get_OAM(i * 4);
+                        sprite_x = get_OAM(i * 4 + 1);
+                        sprite_tile = get_OAM(i * 4 + 2);
+                        sprite_attr = get_OAM(i * 4 + 3);
+
+                        if (get_IOR(0x44) + 8 - 2 * (get_IOR(0x40) & 0x04) < sprite_y
+                         && get_IOR(0x44) >= sprite_y - 16) {
+                                                                                // TODO: limit sprites per row?
+                                // Skipping invisible sprites
+                                if (sprite_x == 0 || sprite_x >= 168) {
+                                        continue;
+                                }
+
+                                bool flip_x = sprite_attr & 0x40;
+                                bool flip_y = sprite_attr & 0x20;
+                                
+                                // Calculating tile address
+                                // Horizontal pixel line
+                                tile_addr = get_IOR(0x44) - (sprite_y - 16);
+                                if (flip_y) {
+                                        tile_addr = 7 + 2 * (get_IOR(0x40) & 0x04) -
+                                                tile_addr;
+                                }
+
+                                // Getting tiles
+                                tile_1 = read_mem(tile_addr);
+                                tile_2 = read_mem(tile_addr + 1);
+
+                                if (flip_x) {
+                                        tile_1 >>= sprite_x - MIN(sprite_x, 160);        // Maybe clean these up?
+                                        tile_2 >>= sprite_x - MIN(sprite_x, 160);
+                                        for (int j = MIN(sprite_x, 160) - 1;
+                                            j >= MAX(sprite_x - 8, 0); j--) {
+                                                // Getting data for the pixel
+                                                pixel_data = ((tile_1 << tile_x) & 0x80) >> 7;
+                                                pixel_data |= ((tile_2 << tile_x) & 0x80) >> 6;
+
+                                                if (pixel_data != 0){           // Ignoring transparent
+                                                        graphics_raw[get_IOR(0x44)][j] = pixel_data;
+
+                                                        // TODO: palettes!!!!----------------------------------------------------------
+                                                }
+
+                                                tile_1 >>= 1;
+                                                tile_2 >>= 1;
+                                            }
+                                }
+                                else {
+                                        tile_1 >>= MAX(sprite_x - 8, 0) - (sprite_x - 8);        // Maybe clean these up?
+                                        tile_2 >>= MAX(sprite_x - 8, 0) - (sprite_x - 8);
+                                        for (int j = MAX(sprite_x - 8, 0); 
+                                            j < MIN(sprite_x, 160); j++) {
+                                                // Getting data for the pixel
+                                                pixel_data = ((tile_1 << tile_x) & 0x80) >> 7;
+                                                pixel_data |= ((tile_2 << tile_x) & 0x80) >> 6;
+
+                                                if (pixel_data != 0){           // Ignoring transparent
+                                                        graphics_raw[get_IOR(0x44)][j] = pixel_data;
+
+                                                        // TODO: palettes!!!!----------------------------------------------------------
+                                                }
+
+                                                tile_1 >>= 1;
+                                                tile_2 >>= 1;
+                                        }
+                                }
+                        }
+
+                }
         }
 }
 
-void
-update_timers(uint8_t cycles) 
+
+int
+init_SDL()
 {
-
-        // DIV timer
-        div_lower += cycles;
-        if (div_lower > 256) {
-                div_lower -= 256;
-                IOR[0x04] += 1;
+        // Initialize all SDL systems
+        if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
+                // Send message if fails
+                printf("error initializing SDL: %s\n", SDL_GetError());
+                return false;
         }
+        // Create parts of window (64 by 32 pixels)
+        window = SDL_CreateWindow("Gameboy", 
+                                        SDL_WINDOWPOS_CENTERED,
+                                        SDL_WINDOWPOS_CENTERED,
+                                        800, 720, 0);
 
-        // TIMA timer                                                           // TODO: emulate timer issues? + delays
-        if (IOR[0x07] & 0x4) {
-                tima_lower += cycles;
-                if (tima_lower > tima_freq[IOR[0x07] & 0x3]) {
-                        tima_lower -= tima_freq[IOR[0x07] & 0x3];
-                        IOR[0x05] ++;
-                        if (IOR[0x05] == 0) {   // Overflow
-                                IOR[0x05] = IOR[0x06];
-                                IF |= 0x4;
-                        }
-                }
-        }
+        renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+        SDL_RenderSetLogicalSize(renderer, 160, 144);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); 
+
+        texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, 
+                                        SDL_TEXTUREACCESS_STREAMING, 160, 144);
+
+        return true; // Return true when there is no problem
 }
 
 uint32_t colors[4] = {0, 1717986918, 2863311530, 4294967295};
@@ -280,7 +285,7 @@ void update_SDL()
         // Filling pixels corresponding to graphics array
         for (int i = 0; i < 144; i++) {
                 for (int j = 0; j < 160; j ++) {
-                        graphics[i][j] = colors[graphics_raw[i][j] & 0x3];
+                        graphics[i][j] = colors[graphics_raw[i][j]];
                 }
         }
 
@@ -298,4 +303,4 @@ void update_SDL()
         SDL_RenderCopy(renderer, texture, NULL, NULL);
         SDL_RenderPresent(renderer);
 }
-*/
+
