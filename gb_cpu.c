@@ -126,15 +126,11 @@ uint16_t cpu_cycles;
 uint16_t tima_freq[] = {1024, 16, 64, 256}; 
 
 // Random values
-uint8_t *r1;                    //
-uint8_t *r2;
 uint8_t n;
 int8_t n_signed;
 uint8_t n2;
 uint16_t nn;
 uint32_t nnnn;
-bool hl_write;
-bool hl_read;
 
 
 void
@@ -935,75 +931,65 @@ execute()                                                                       
                 case 0x50:
                 case 0x60:                                                      // TODO: fix this
                 case 0x70:
-                hl_write = false;
-                hl_read = false;
+                switch(opcode & 0x7){ // Pairing together 0-8, 1-9, etc.
+                        case 0x0:
+                        n = reg.b;
+                        break;
+                        case 0x1:
+                        n = reg.c;
+                        break;
+                        case 0x2:
+                        n = reg.d;
+                        break;
+                        case 0x3:
+                        n = reg.e;
+                        break;
+                        case 0x4:
+                        n = reg.h;
+                        break;
+                        case 0x5:
+                        n = reg.l;
+                        break;
+                        case 0x6:
+                        n = read_mem(reg.hl);
+                        break;
+                        case 0x7:
+                        n = reg.a;
+                        break;
+                }
                 switch (opcode & 0xF0) {
                         case 0x40:
-                                if ((opcode * 2) & 0xF0) {      // Second half
-                                        r1 = &reg.c;
+                                if (opcode & 0x8) {      // Second half
+                                        reg.c = n;
                                 }
                                 else {                          // First half
-                                        r1 = &reg.b;
+                                        reg.b = n;
                                 }
                         break;
                         case 0x50:
-                                if ((opcode * 2) & 0xF0) {      // Second half
-                                        r1 = &reg.e;
+                                if (opcode & 0x8) {      // Second half
+                                        reg.e = n;
                                 }
                                 else {                          // First half
-                                        r1 = &reg.d;
+                                        reg.d = n;
                                 }
                         break;
                         case 0x60:
-                                if ((opcode * 2) & 0xF0) {      // Second half
-                                        r1 = &reg.l;
+                                if (opcode & 0x8) {      // Second half
+                                        reg.l = n;
                                 }
                                 else {                          // First half
-                                        r1 = &reg.h;
+                                        reg.h = n;
                                 }
                         break;
                         case 0x70:
-                                if ((opcode * 2) & 0xF0) {      // Second half
-                                        r1 = &reg.a;
+                                if (opcode & 0x8) {      // Second half
+                                        reg.a = n;
                                 }
                                 else {                          // First half
-                                        hl_write = true;                            // TODO: Should be hl
+                                        write_mem(reg.hl, n);
                                 }
                         break;
-                }
-                switch((opcode * 2) & 0xF){ // Pairing together 0-8, 1-9, etc.
-                        case 0x0:
-                        r2 = &reg.b;
-                        break;
-                        case 0x2:
-                        r2 = &reg.c;
-                        break;
-                        case 0x4:
-                        r2 = &reg.d;
-                        break;
-                        case 0x6:
-                        r2 = &reg.e;
-                        break;
-                        case 0x8:
-                        r2 = &reg.h;
-                        break;
-                        case 0xA:
-                        r2 = &reg.l;
-                        break;
-                        case 0xC:
-                        hl_read = true;                                            // TODO: SHOULD BE HL
-                        break;
-                        case 0xE:
-                        r2 = &reg.a;
-                        break;
-                }
-                if (hl_write) {
-                        if (hl_read) write_mem(reg.hl, read_mem(reg.hl));
-                        else write_mem(reg.hl, *r2);
-                }
-                else {
-                        if (hl_read) *r1 = read_mem(reg.hl);
-                        else *r1 = *r2;      // Moving contents of r2 into r1
                 }
                 break;
                 case 0x80:
