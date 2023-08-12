@@ -11,6 +11,8 @@
 
 // Verbosity
 int verbose = 0;
+int debug = 0;
+int start = 28627;
 
 // Rom reading
 uint8_t *load_rom;           // ROM from cartridge
@@ -27,14 +29,14 @@ bool active = true;
 
 // Cycle Emulation
 uint16_t curr_cycles;
-
+long total_cycles = 0;
 
 int
 main(int argc, char **argv)
 {
         // Checking for verbose flag
         char c;
-        while ((c = getopt (argc, argv, "vV")) != -1) {
+        while ((c = getopt (argc, argv, "vdV")) != -1) {
                 switch (c)
                 {
                 case 'v':
@@ -42,6 +44,9 @@ main(int argc, char **argv)
                         break;
                 case 'V':
                         verbose = 2;
+                        break;
+                case 'd':
+                        debug = 1;
                         break;
                 default:
                         abort ();
@@ -78,7 +83,71 @@ main(int argc, char **argv)
                 return -1;
         }
         SDL_Event event;
-
+        // Debug setup
+        if (debug) {
+        verbose = 0;
+        for (int i = 0; i < start - 1; i ++) {
+                execute_frame();
+        }
+        update_SDL();
+        verbose = 2;
+        while (active) {
+                // Get SDL events
+                while(SDL_PollEvent( &event ) ){
+                        switch( event.type ){
+                                case SDL_KEYDOWN:
+                                switch (event.key.keysym.sym){
+                                        case SDLK_ESCAPE:
+                                        active = false;
+                                        break;
+                                        case SDLK_a:
+                                        execute_frame();
+                                        update_SDL();
+                                        break;
+                                        case SDLK_b:
+                                        verbose = 0;
+                                        for (int i = 0; i < 9; i++) {
+                                                execute_frame();
+                                        }
+                                        verbose = 2;
+                                        execute_frame();
+                                        break;
+                                        case SDLK_d:
+                                        verbose = 0;
+                                        for (int i = 0; i < 99; i++) {
+                                                execute_frame();
+                                        }
+                                        verbose = 2;
+                                        execute_frame();
+                                        break;
+                                        case SDLK_f:
+                                        verbose = 0;
+                                        for (int i = 0; i < 999; i++) {
+                                                execute_frame();
+                                        }
+                                        verbose = 2;
+                                        execute_frame();
+                                        break;
+                                        case SDLK_g:
+                                        verbose = 0;
+                                        for (int i = 0; i < 9999; i++) {
+                                                execute_frame();
+                                        }
+                                        verbose = 2;
+                                        execute_frame();
+                                        break;
+                                        case SDLK_c:
+                                        print_registers();
+                                        break;
+                                        case SDLK_x:
+                                        print_lcd();
+                                        break;
+                                }
+                        }
+                }
+        }
+        }
+        else {
         while (active) {
                 // Get SDL events
                 while(SDL_PollEvent( &event ) ){
@@ -147,7 +216,7 @@ main(int argc, char **argv)
                 }
 
                 // Align framerate
-                SDL_Delay(1);
+                for (int i = 0; i < 20; i++) usleep(900);
 
                 // DO CPU STUFF
                 curr_cycles = execute();
@@ -157,9 +226,17 @@ main(int argc, char **argv)
                 update_lcd(curr_cycles);
 
                 // UPDATE SDL
-                update_SDL();
-        }
+                //update_SDL();
 
+                // TIming?
+                total_cycles += curr_cycles;
+                //4194304
+                if (total_cycles > 4000) {
+                        update_SDL();
+                        total_cycles = 0;
+                }
+        }
+        }
         return 1;
 }
 
@@ -246,4 +323,15 @@ uint8_t
 get_joystick()
 {
         return joystick_flags;
+}
+
+void
+execute_frame()
+{
+        curr_cycles = execute();
+        update_timers(curr_cycles);
+
+        // Rendering
+        update_lcd(curr_cycles);
+
 }

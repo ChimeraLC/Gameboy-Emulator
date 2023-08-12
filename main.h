@@ -11,6 +11,7 @@ extern int verbose;
 
 int read_rom(char *filename);
 int init_SDL();
+void execute_frame();
 uint8_t get_joystick();
 
 

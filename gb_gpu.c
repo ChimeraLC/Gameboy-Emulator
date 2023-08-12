@@ -4,6 +4,7 @@
 #include <math.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <assert.h>
 
 #include "main.h"
 #include "gb_cpu.h"
@@ -19,8 +20,8 @@ uint8_t tile_x;
 uint8_t tile_y;
 uint8_t tile_1;
 uint8_t tile_2;
+uint8_t line_y;
 uint8_t pixel_data;
-uint8_t row[160];
 uint8_t sprite_x;
 uint8_t sprite_y;
 uint8_t sprite_tile;
@@ -42,7 +43,7 @@ init_gpu()
 void
 drawline_lcd()                                                                  // Seems very incorrect
 {
-        if (verbose == 3) {
+        if (verbose == 2) {
                 printf("Drawing line %d\n", get_IOR(0x44));
         }
         // Background
@@ -50,18 +51,17 @@ drawline_lcd()                                                                  
                 
                 
                 // Finding mapped tile
-                tile_map_addr = ((get_IOR(0x44) + get_IOR(0x42)) >> 3) * 32;        // Snapping to multiples of 8
+		line_y = get_IOR(0x44) + get_IOR(0x42);
+                tile_map_addr = (line_y >> 3) * 32;        // Snapping to multiples of 8
 
-                if (get_IOR(0x8) & 0x10) {
+                if (get_IOR(0x40) & 0x08) {
                         tile_map_addr += 0x9C00;
                 }
                 else {
                         tile_map_addr += 0x9800;
                 }
-
                 // Finding tile addr
                 tile_addr = read_mem(tile_map_addr + (get_IOR(0x43) >> 3));
-
                 // Tile data area
                 if (get_IOR(0x40) & 0x10) {
                         tile_addr = 0x8000 + tile_addr * 16;
@@ -71,7 +71,7 @@ drawline_lcd()                                                                  
                 }
 
                 // X and Y positions within the tile
-                tile_y = ((get_IOR(0x44) + get_IOR(0x42)) & 0x7);
+                tile_y = (get_IOR(0x44) + get_IOR(0x42)) & 0x7;
                 tile_x = get_IOR(0x43) & 0x07;
 
                 // Address corresponding to row
@@ -80,19 +80,18 @@ drawline_lcd()                                                                  
                 // Getting tiles
                 tile_1 = read_mem(tile_addr);
                 tile_2 = read_mem(tile_addr + 1);
-
                 // Drawing the entire row
-                for (uint8_t x = 0; x < 160; x++) {
+                for (int x = 0; x < 160; x++) {
 
                         // Getting data for the pixel
                         pixel_data = ((tile_1 << tile_x) & 0x80) >> 7;
                         pixel_data |= ((tile_2 << tile_x) & 0x80) >> 6;
-
+                        
                         graphics_raw[get_IOR(0x44)][x] = pixel_data;
 
-                        tile_x ++;
+                        tile_x++;
                         if (tile_x == 8) {      // Get next tile in row
-                                tile_addr = read_mem(tile_map_addr + (get_IOR(0x43) >> 3) + x + 1) + 2 * tile_y;
+                                tile_addr = read_mem(tile_map_addr + ((get_IOR(0x43) + x + 1) >> 3));
 
                                 // Tile data area
                                 if (get_IOR(0x40) & 0x10) {
@@ -101,6 +100,8 @@ drawline_lcd()                                                                  
                                 else {
                                         tile_addr = 0x8800 + ((tile_addr + 128) % 0x100) * 16;
                                 }
+
+                                tile_addr +=  2 * tile_y;
                                                 
                                 // Getting tiles
                                 tile_1 = read_mem(tile_addr);
@@ -108,17 +109,18 @@ drawline_lcd()                                                                  
 
                                 tile_x = 0;
                         }
+
                 }
 
         }
-
+        /*
         // Window
         if ((get_IOR(0x40) & 0x20) && (get_IOR(0x44) >= get_IOR(0x4A))) {                   // Including base bit 0 enable?
                 
                 // Finding mapped tile
                 tile_map_addr = (get_IOR(0x4A) >> 3) * 32;        // Snapping to multiples of 8
 
-                if (get_IOR(0x8) & 0x10) {
+                if (get_IOR(0x40) & 0x40) {
                         tile_map_addr += 0x9C00;
                 }
                 else {
@@ -176,7 +178,6 @@ drawline_lcd()                                                                  
                         }
                 }
         }
-
         // Sprites
         if (get_IOR(0x40) & 0x2) {
                 for (int i = 39; i > 0; i--) {  // Draw lower values on top
@@ -186,9 +187,9 @@ drawline_lcd()                                                                  
                         sprite_tile = get_OAM(i * 4 + 2);
                         sprite_attr = get_OAM(i * 4 + 3);
 
-                        if (get_IOR(0x44) + 8 - 2 * (get_IOR(0x40) & 0x04) < sprite_y
                          && get_IOR(0x44) >= sprite_y - 16) {
                                                                                 // TODO: limit sprites per row?
+                        if (get_IOR(0x44) + 8 - 2 * (get_IOR(0x40) & 0x04) < sprite_y
                                 // Skipping invisible sprites
                                 if (sprite_x == 0 || sprite_x >= 168) {
                                         continue;
@@ -251,6 +252,7 @@ drawline_lcd()                                                                  
 
                 }
         }
+        */
 }
 
 
@@ -275,11 +277,10 @@ init_SDL()
 
         texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, 
                                         SDL_TEXTUREACCESS_STREAMING, 160, 144);
-
         return true; // Return true when there is no problem
 }
 
-uint32_t colors[4] = {0, 1717986918, 2863311530, 4294967295};
+uint32_t colors[4] = {0xFFFFFFFF, 0xAAAAAAAA, 0x55555555, 0x00000000};
 void update_SDL()
 {
         // Filling pixels corresponding to graphics array
@@ -288,7 +289,6 @@ void update_SDL()
                         graphics[i][j] = colors[graphics_raw[i][j]];
                 }
         }
-
         // Applying texture to screen
         int texture_pitch = 0;
         void* texture_pixels = NULL;
@@ -296,7 +296,7 @@ void update_SDL()
                 SDL_Log("Unable to lock texture: %s", SDL_GetError());
         }
         else {
-                memcpy(texture_pixels, graphics, texture_pitch * 32);
+                memcpy(texture_pixels, graphics, texture_pitch * 144);
         }
         SDL_UnlockTexture(texture);
         SDL_RenderClear(renderer);

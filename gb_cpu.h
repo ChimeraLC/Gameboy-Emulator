@@ -12,7 +12,8 @@ void update_lcd(uint16_t cycles);
 uint8_t execute();
 uint8_t get_IOR(uint16_t addr);
 uint8_t get_OAM(uint16_t addr);
-
+void print_registers();
+void print_lcd();
 
 /*
  *      Constants definitions
