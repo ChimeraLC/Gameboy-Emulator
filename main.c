@@ -12,8 +12,8 @@
 // Verbosity
 int verbose = 0;
 int debug = 0;
-int start = 28627;
-
+int start = 0;
+// End of boot rom: 2303977
 // Rom reading
 uint8_t *load_rom;           // ROM from cartridge
 char *cartridge_types[] = {"ROM ONLY", "MBC1"};
@@ -36,7 +36,7 @@ main(int argc, char **argv)
 {
         // Checking for verbose flag
         char c;
-        while ((c = getopt (argc, argv, "vdV")) != -1) {
+        while ((c = getopt (argc, argv, "vdVs:")) != -1) {
                 switch (c)
                 {
                 case 'v':
@@ -47,7 +47,19 @@ main(int argc, char **argv)
                         break;
                 case 'd':
                         debug = 1;
+                        verbose = 2;
                         break;
+                case 's':
+                        start = atoi(optarg);
+                        if (start < 0) {
+                                printf("Start point must be nonnegative\n");
+                                return -1;
+                        }
+                        break;
+                case '?':
+                        if (optopt == 's')
+                        fprintf (stderr, "Option -%c requires an argument.\n", optopt);
+                        return -1;
                 default:
                         abort ();
                 }
@@ -62,7 +74,13 @@ main(int argc, char **argv)
         char *filename = argv[optind];
 
         printf("Loading rom %s", filename);
-        if (verbose) {
+        if (debug) {
+                printf(" in debug mode");
+                if (start) {
+                        printf(" at start point %d", start);
+                }
+        }
+        else if (verbose) {
                 printf(" with verbose flags active");
         }
         printf("\n");
@@ -89,7 +107,6 @@ main(int argc, char **argv)
         for (int i = 0; i < start - 1; i ++) {
                 execute_frame();
         }
-        update_SDL();
         verbose = 2;
         while (active) {
                 // Get SDL events
@@ -104,7 +121,7 @@ main(int argc, char **argv)
                                         execute_frame();
                                         update_SDL();
                                         break;
-                                        case SDLK_b:
+                                        case SDLK_s:
                                         verbose = 0;
                                         for (int i = 0; i < 9; i++) {
                                                 execute_frame();
@@ -142,11 +159,22 @@ main(int argc, char **argv)
                                         case SDLK_x:
                                         print_lcd();
                                         break;
+                                        case SDLK_z:
+                                        test();
+                                        break;
+                                        case SDLK_v:
+                                        update_SDL();
+                                        break;
+                                        case SDLK_b:
+                                                print_raw();
+                                        break;
                                 }
                         }
                 }
         }
         }
+        
+        // Normal setup
         else {
         while (active) {
                 // Get SDL events
@@ -220,10 +248,10 @@ main(int argc, char **argv)
 
                 // DO CPU STUFF
                 curr_cycles = execute();
-                update_timers(curr_cycles);
 
                 // Rendering
                 update_lcd(curr_cycles);
+                update_timers(curr_cycles);
 
                 // UPDATE SDL
                 //update_SDL();
@@ -231,12 +259,15 @@ main(int argc, char **argv)
                 // TIming?
                 total_cycles += curr_cycles;
                 //4194304
-                if (total_cycles > 4000) {
-                        update_SDL();
+                if (total_cycles > 4194304) {
                         total_cycles = 0;
+                        if (verbose) {
+                                printf("second\n");
+                        }
                 }
         }
         }
+
         return 1;
 }
 
@@ -311,6 +342,8 @@ read_rom(char *filename)
 
         if (verbose) printf("The RAM has size %X\n", ram_size);
 
+        // TODO: save files
+
         // Returning without errors
         return 0;
 
@@ -329,9 +362,9 @@ void
 execute_frame()
 {
         curr_cycles = execute();
-        update_timers(curr_cycles);
-
         // Rendering
         update_lcd(curr_cycles);
+        // Update timers
+        update_timers(curr_cycles);
 
 }

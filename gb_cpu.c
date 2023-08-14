@@ -37,7 +37,7 @@ uint8_t BIOS[0x100] = {
 	0x05, 0x20, 0xF5, 0x22, 0x23, 0x22, 0x23, 0xC9, 0xCE, 0xED, 0x66, 0x66, 0xCC, 0x0D, 0x00, 0x0B,
 	0x03, 0x73, 0x00, 0x83, 0x00, 0x0C, 0x00, 0x0D, 0x00, 0x08, 0x11, 0x1F, 0x88, 0x89, 0x00, 0x0E,
 	0xDC, 0xCC, 0x6E, 0xE6, 0xDD, 0xDD, 0xD9, 0x99, 0xBB, 0xBB, 0x67, 0x63, 0x6E, 0x0E, 0xEC, 0xCC,
-	0xDD, 0xDC, 0x99, 0x9F, 0xBB, 0xB9, 0x33, 0x3E, 0x3c, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x4C,
+	0xDD, 0xDC, 0x99, 0x9F, 0xBB, 0xB9, 0x33, 0x3E, 0x3c, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x3C,
 	0x21, 0x04, 0x01, 0x11, 0xA8, 0x00, 0x1A, 0x13, 0xBE, 0x20, 0xFE, 0x23, 0x7D, 0xFE, 0x34, 0x20,
 	0xF5, 0x06, 0x19, 0x78, 0x86, 0x23, 0x05, 0x20, 0xFB, 0x86, 0x20, 0xFE, 0x3E, 0x01, 0xE0, 0x50 };
 
@@ -143,6 +143,8 @@ init_cpu(uint8_t *rom)
         div_lower = 0;
         tima_lower = 0;
         lcd_cycles = 0;
+        wram_bank = 1;
+        eram_bank = 1;
         /*
         //write_mem(0xFF50, 1);
         SP = 0xFFFE;
@@ -253,6 +255,12 @@ read_mem(uint16_t addr)
                                 case 0x00:      // Joystick Register
                                 return IOR[0x00] | 0xC0;
                                 break;
+                                case 0x01:      // SB
+                                return IOR[0x01];
+                                break;
+                                case 0x02:      // SC
+                                return IOR[0x02];
+                                break;
                                 case 0x04:      // DIV Timer
                                 return IOR[0x04];
                                 case 0x05:      // TIMA
@@ -263,14 +271,16 @@ read_mem(uint16_t addr)
                                 case 0x07:       // TAC
                                 return IOR[0x07];
                                 break;
+                                case 0x0F:      // IF register
+                                return IF;
                                 case 0x40:      // LCDC
                                 return IOR[0x40];
                                 break;
-                                case 0x41:      // STAT
+                                case 0x41:      // STAT                         // REQUIRES FIX
                                 if (IOR[0x40] & 0xF0) {
-                                        return IOR[0x44] | 0x87;
+                                        return IOR[0x41];
                                 }
-                                return (IOR[0x44] | 0x80) & ~(0x7);             // Check bitwise operations
+                                return (IOR[0x41] & 0xF8) | 0x1;             // Check bitwise operations
                                 break;
                                 case 0x42:      // SCY
                                 return IOR[0x42];
@@ -287,6 +297,9 @@ read_mem(uint16_t addr)
                                 case 0x45:      // LYC
                                 return (IOR[0x45]);
                                 break;
+                                case 0x46:      // DMA
+                                return IOR[0x46];
+                                break;
                                 case 0x47:      // BGP
                                 return IOR[0x47];
                                 break;
@@ -302,18 +315,13 @@ read_mem(uint16_t addr)
                                 case 0x4B:      // WX
                                 return IOR[0x4B];
                                 break;
-                                case 0x70:      // SVBK
-                                return 0xFF;
-                                break;
-                                case 0x4F:      // VBK
-                                return 0xFE | IOR[0x4F];                                    // Potentially needs to fix
-                                break;
                         }
                         return IOR[addr - IOR_ADDR];
                 }
                 if (addr < 0xFFFF)
                         return HRAM[addr - HRAM_ADDR];
-                return IE;
+                if (addr == 0xFFFF)
+                        return IE;
                 break;
         }
 
@@ -366,11 +374,11 @@ write_mem(uint16_t addr, uint8_t val)
                 case 0xF000:
                 if (addr < OAM_ADDR)
                         WRAM[addr - WRAM_ADDR + (wram_bank - 1) * 0x1000 - 0x2000] = val;
-                if (addr < 0xFEA0)
+                else if (addr < 0xFEA0)
                         OAM[addr - OAM_ADDR] = val;
-                if (addr < IOR_ADDR)
+                else if (addr < IOR_ADDR)
                         return;
-                if (addr < HRAM_ADDR)   // I/O Registers
+                else if (addr < HRAM_ADDR)   // I/O Registers
                         switch (addr & 0xFF) {
                                 case 0x00:      // Joystick registers
                                 IOR[0x00] = val & 0x30;
@@ -381,6 +389,12 @@ write_mem(uint16_t addr, uint8_t val)
                                 if (!(IOR[0x00] & 0x20)) {
                                         IOR[0x00] &= (get_joystick() >> 4) | 0xF0;
                                 }
+                                break;
+                                case 0x01:      // SB
+                                IOR[0x01] = val;
+                                break;
+                                case 0x02:      // SC
+                                IOR[0x02] = val;
                                 break;
                                 case 0x04:      // DIV timer
                                 IOR[0x04] = 0;
@@ -400,14 +414,14 @@ write_mem(uint16_t addr, uint8_t val)
                                 case 0x40:      // LCDC
                                 IOR[0x40] = val;
                                 break;
-                                case 0x41:      // STAT
-                                IOR[0x45] &= ~(0x78);
-                                IOR[0x45] |= val & (0x78);
+                                case 0x41:      // STAT                         // FIX
+                                IOR[0x41] &= ~(0x78);
+                                IOR[0x41] |= val & (0x78);
                                 break;
                                 case 0x42:      // SCY
                                 IOR[0x42] = val;
                                 break;
-                                case 0x43:      // SCY
+                                case 0x43:      // SCX
                                 IOR[0x43] = val;
                                 break;
                                 case 0x44:      // LY
@@ -416,6 +430,7 @@ write_mem(uint16_t addr, uint8_t val)
                                 IOR[0x45] = val;
                                 break;
                                 case 0x46:      // OAM DMA Transfer
+                                IOR[0x46] = val;
                                 for (uint8_t i = 0; i < 0xA0; i++) {            // TODO: check it doesn't exceed 0xDF?
                                         OAM[i] = read_mem((val << 8) + i);
                                 }
@@ -436,9 +451,6 @@ write_mem(uint16_t addr, uint8_t val)
                                 case 0x4B:      // WX
                                 IOR[0x4B] = val;
                                 break;
-                                case 0x4F:      // VBK
-                                IOR[0x4F] = val;
-                                break;
                                 case 0x50:      // BOOT Rom
                                 IOR[0x50] = 1;
                                 if (verbose) {
@@ -446,9 +458,10 @@ write_mem(uint16_t addr, uint8_t val)
                                 }
                                 break;
                         }
-                if (addr < 0xFFFF)
+                else if (addr < 0xFFFF)
                         HRAM[addr - HRAM_ADDR] = val;
-                IE = val;
+                else if (addr == 0xFFFF)
+                        IE = val;
                 break;
         }
 }
@@ -458,9 +471,56 @@ uint8_t
 execute()                                                                         // TODO: fix references to (HL) to be accurate
 {                                                                               // TODO: still missing misc, rotates, bit opcodes (3.3.5, 3.3.6, 3.3.7)
         
+
+        // Handle interrupts
+        if ((HALT || IME) && (IE & IF)) {         // Check for correspondings flags
+                // Exit halt
+                HALT = 0;
+                
+                if (IME) {
+                        IME = 0;
+
+                        // Put PC on stack
+                        write_mem(--SP, PC >> 8);
+                        write_mem(--SP, PC & 0xff);
+
+                        // Vblank
+                        if (IE & IF & 0x1) {
+                                PC = 0x40;
+                                IF &= ~(0x1);
+                        }
+
+                        // LCD STAT
+                        else if (IE & IF & 0x2) {
+                                PC = 0x48;
+                                IF &= ~(0x2);
+                        }
+
+                        // Timer
+                        else if (IE & IF & 0x4) {
+                                PC = 0x50;
+                                IF &= ~(0x4);
+                        }
+
+                        // Serial
+                        else if (IE & IF & 0x8) {
+                                PC = 0x58;
+                                IF &= ~(0x8);
+                        }
+
+                        // Joypad
+                        else if (IE & IF & 0x10) {
+                                PC = 0x60;
+                                IF &= ~(0x10);
+                        }
+                }
+        }                                                                       // Should I wait a cycle?
+
+
         // Doing nothing if halted
         if (HALT) return 4;
 
+        // Read next opcode
         opcode = read_mem(PC++);
         opcodes_run += 1;
 
@@ -2353,7 +2413,6 @@ update_lcd(uint16_t cycles)
                 lcd_cycles -= 456;
 
                 // Interrupt check
-                IOR[0x41] &= ~(0x4);    //STAT comparison signal
                 if (IOR[0x44] == IOR[0x45]) {
                         if (IOR[0x41] & 0x40) {
                                 IF |= 0x2;
@@ -2391,17 +2450,19 @@ update_lcd(uint16_t cycles)
                         if (IOR[0x41] & 0x10) { // VBLANK STAT interrupt 
                                 IF |= 0x2;
                         }
+
+                        update_SDL();
                 }
                 
         }
-        else if (lcd_cycles > 284)                                                                // Other states
+        else if (lcd_cycles > 284 && (IOR[0x41] & 0x3) == 2)                     // Other states
         {
                 // LCD Stat mode
                 IOR[0x41] = (IOR[0x41] & ~(0x3)) | 0x3;
         
                 drawline_lcd();                                                 // Check that this is in frame / is repeated unecessarily?
         } 
-        else if (lcd_cycles > 204) {
+        else if (lcd_cycles > 204 && (IOR[0x41] & 0x3) == 0) {
                 // LCD Stat mode
                 IOR[0x41] = (IOR[0x41] & ~(0x3)) | 0x2;
 
@@ -2437,8 +2498,8 @@ print_registers()
         printf("BC: %X\n", reg.bc);
         printf("DE: %X\n", reg.de);
         printf("HL: %X\n", reg.hl);
-        printf("PC: %X\n", PC);
-        printf("SP: %X\n", SP);
+        printf("PC: %X, SP: %X\n", PC, SP);
+        printf("IE: %X, IF: %X\n", IE, IF);
         printf("Opcodes run: %ld\n", opcodes_run);
 }
 
@@ -2451,4 +2512,10 @@ print_lcd()
                 else printf("0");
         }
         printf("\n");
+}
+
+void
+test()
+{
+        write_mem(0xFF0F, reg.a);
 }

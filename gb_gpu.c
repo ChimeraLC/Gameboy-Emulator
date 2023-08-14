@@ -112,13 +112,15 @@ drawline_lcd()                                                                  
 
                 }
 
+
         }
         /*
         // Window
         if ((get_IOR(0x40) & 0x20) && (get_IOR(0x44) >= get_IOR(0x4A))) {                   // Including base bit 0 enable?
                 
                 // Finding mapped tile
-                tile_map_addr = (get_IOR(0x4A) >> 3) * 32;        // Snapping to multiples of 8
+		line_y = get_IOR(0x4A);
+                tile_map_addr = (line_y >> 3) * 32;        // Snapping to multiples of 8
 
                 if (get_IOR(0x40) & 0x40) {
                         tile_map_addr += 0x9C00;
@@ -160,7 +162,7 @@ drawline_lcd()                                                                  
 
                         tile_x ++;
                         if (tile_x == 8) {      // Get next tile in row
-                                tile_addr = read_mem(tile_map_addr + ((get_IOR(0x4B) - 7) >> 3) + x + 1) + 2 * tile_y;
+                                tile_addr = read_mem(tile_map_addr + ((get_IOR(0x4B) - 7) >> 3) + x + 1);
 
                                 // Tile data area
                                 if (get_IOR(0x40) & 0x10) {
@@ -169,6 +171,8 @@ drawline_lcd()                                                                  
                                 else {
                                         tile_addr = 0x8800 + ((tile_addr + 128) % 0x100) * 16;
                                 }
+
+                                tile_addr += 2 * tile_y;
                                                 
                                 // Getting tiles
                                 tile_1 = read_mem(tile_addr);
@@ -178,6 +182,8 @@ drawline_lcd()                                                                  
                         }
                 }
         }
+        */
+        /*
         // Sprites
         if (get_IOR(0x40) & 0x2) {
                 for (int i = 39; i > 0; i--) {  // Draw lower values on top
@@ -273,7 +279,7 @@ init_SDL()
 
         renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
         SDL_RenderSetLogicalSize(renderer, 160, 144);
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); 
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); 
 
         texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, 
                                         SDL_TEXTUREACCESS_STREAMING, 160, 144);
@@ -285,22 +291,23 @@ void update_SDL()
 {
         // Filling pixels corresponding to graphics array
         for (int i = 0; i < 144; i++) {
-                for (int j = 0; j < 160; j ++) {
+                for (int j = 0; j < 160; j++) {
                         graphics[i][j] = colors[graphics_raw[i][j]];
                 }
         }
         // Applying texture to screen
-        int texture_pitch = 0;
-        void* texture_pixels = NULL;
-        if (SDL_LockTexture(texture, NULL, &texture_pixels, &texture_pitch) != 0) {
-                SDL_Log("Unable to lock texture: %s", SDL_GetError());
-        }
-        else {
-                memcpy(texture_pixels, graphics, texture_pitch * 144);
-        }
-        SDL_UnlockTexture(texture);
+        SDL_UpdateTexture(texture, NULL, graphics, 160 * sizeof(uint32_t));
         SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer, texture, NULL, NULL);
         SDL_RenderPresent(renderer);
 }
 
+void print_raw()
+{
+        for (int i = 0; i < 144; i++) {
+                for (int j = 0; j < 160; j++) {
+                        printf("%X",graphics_raw[i][j]);
+                }
+                printf("\n");
+        }
+}
