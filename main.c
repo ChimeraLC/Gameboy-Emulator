@@ -27,6 +27,10 @@ uint8_t joystick_flags;
 // If emulator is active
 bool active = true;
 
+// Framerate syncing
+long last_frame;
+long current_frame;
+
 // Cycle Emulation
 uint16_t curr_cycles;
 long total_cycles = 0;
@@ -101,6 +105,10 @@ main(int argc, char **argv)
                 return -1;
         }
         SDL_Event event;
+        
+        // First frame
+        last_frame = SDL_GetTicks();
+
         // Debug setup
         if (debug) {
         verbose = 0;
@@ -237,14 +245,19 @@ main(int argc, char **argv)
                                         case SDLK_a:    // Start Key
                                         joystick_flags |= (0x80);
                                         break;
+                                        case SDLK_p:
+                                        print_registers();
+                                        break;
                                 
                                 }
                                 break;
                         }
                 }
 
-                // Align framerate
-                for (int i = 0; i < 20; i++) usleep(900);
+                // Align framerate (INCOMPLETE)
+                for (int i = 0; i < 10; i++) {
+                        usleep(900);
+                }
 
                 // DO CPU STUFF
                 curr_cycles = execute();
@@ -259,7 +272,7 @@ main(int argc, char **argv)
                 // TIming?
                 total_cycles += curr_cycles;
                 //4194304
-                if (total_cycles > 4194304) {
+                if (total_cycles > 4194304 && verbose) {
                         total_cycles = 0;
                         if (verbose) {
                                 printf("second\n");
@@ -271,7 +284,9 @@ main(int argc, char **argv)
         return 1;
 }
 
-
+/*
+ *   Read the provided ROM and parse out the cartridge header data.
+ */
 int
 read_rom(char *filename)
 {
@@ -358,6 +373,17 @@ get_joystick()
         return joystick_flags;
 }
 
+/*
+ *      Wait between visual frames so that the timing is right
+ *      Each frame should be 1.8 milliseconds
+ */
+void
+align_framerate()
+{
+}
+/*
+ * Execute a single opcode worth of actions (for debugging)
+ */
 void
 execute_frame()
 {

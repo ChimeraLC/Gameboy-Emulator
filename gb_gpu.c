@@ -40,6 +40,7 @@ init_gpu()
 {
 }
 
+// Draw a single line on LCD
 void
 drawline_lcd()                                                                  // Seems very incorrect
 {
@@ -91,7 +92,7 @@ drawline_lcd()                                                                  
 
                         tile_x++;
                         if (tile_x == 8) {      // Get next tile in row
-                                tile_addr = read_mem(tile_map_addr + ((get_IOR(0x43) + x + 1) >> 3));
+                                tile_addr = read_mem(tile_map_addr + (((get_IOR(0x43) + x + 1) % 0x100) >> 3));
 
                                 // Tile data area
                                 if (get_IOR(0x40) & 0x10) {
@@ -114,7 +115,7 @@ drawline_lcd()                                                                  
 
 
         }
-        /*
+        
         // Window
         if ((get_IOR(0x40) & 0x20) && (get_IOR(0x44) >= get_IOR(0x4A))) {                   // Including base bit 0 enable?
                 
@@ -162,7 +163,7 @@ drawline_lcd()                                                                  
 
                         tile_x ++;
                         if (tile_x == 8) {      // Get next tile in row
-                                tile_addr = read_mem(tile_map_addr + ((get_IOR(0x4B) - 7) >> 3) + x + 1);
+                                tile_addr = read_mem(tile_map_addr + (((get_IOR(0x4B) - 7) % 0x100) >> 3) + x + 1);
 
                                 // Tile data area
                                 if (get_IOR(0x40) & 0x10) {
@@ -182,9 +183,9 @@ drawline_lcd()                                                                  
                         }
                 }
         }
-        */
-        /*
-        // Sprites
+        
+        
+        // Objects
         if (get_IOR(0x40) & 0x2) {
                 for (int i = 39; i > 0; i--) {  // Draw lower values on top
 
@@ -193,23 +194,30 @@ drawline_lcd()                                                                  
                         sprite_tile = get_OAM(i * 4 + 2);
                         sprite_attr = get_OAM(i * 4 + 3);
 
+                                                                                    // TODO: limit sprites per row?
+                        if (get_IOR(0x44) + 8 - 2 * (get_IOR(0x40) & 0x4) < sprite_y
                          && get_IOR(0x44) >= sprite_y - 16) {
-                                                                                // TODO: limit sprites per row?
-                        if (get_IOR(0x44) + 8 - 2 * (get_IOR(0x40) & 0x04) < sprite_y
                                 // Skipping invisible sprites
                                 if (sprite_x == 0 || sprite_x >= 168) {
                                         continue;
                                 }
 
-                                bool flip_x = sprite_attr & 0x40;
-                                bool flip_y = sprite_attr & 0x20;
+                                bool flip_x = sprite_attr & 0x20;
+                                bool flip_y = sprite_attr & 0x40;
                                 
                                 // Calculating tile address
                                 // Horizontal pixel line
-                                tile_addr = get_IOR(0x44) - (sprite_y - 16);
+                                line_y = get_IOR(0x44) - (sprite_y - 16);
                                 if (flip_y) {
-                                        tile_addr = 7 + 2 * (get_IOR(0x40) & 0x04) -
-                                                tile_addr;
+                                        line_y = 7 + 2 * (get_IOR(0x40) & 0x4) - line_y;
+                                }
+
+                                // Get address of tile
+                                if (get_IOR(0x40) & 0x04) {
+                                        tile_addr = 0x8000 + (sprite_tile & 0xFE) * 16 + 2 * line_y;
+                                }
+                                else {
+                                        tile_addr = 0x8000 + sprite_tile * 16 + 2 * line_y;
                                 }
 
                                 // Getting tiles
@@ -217,13 +225,13 @@ drawline_lcd()                                                                  
                                 tile_2 = read_mem(tile_addr + 1);
 
                                 if (flip_x) {
-                                        tile_1 >>= sprite_x - MIN(sprite_x, 160);        // Maybe clean these up?
-                                        tile_2 >>= sprite_x - MIN(sprite_x, 160);
+                                        tile_1 <<= sprite_x - MIN(sprite_x, 160);        // Maybe clean these up?
+                                        tile_2 <<= sprite_x - MIN(sprite_x, 160);
                                         for (int j = MIN(sprite_x, 160) - 1;
                                             j >= MAX(sprite_x - 8, 0); j--) {
                                                 // Getting data for the pixel
-                                                pixel_data = ((tile_1 << tile_x) & 0x80) >> 7;
-                                                pixel_data |= ((tile_2 << tile_x) & 0x80) >> 6;
+                                                pixel_data = ((tile_1) & 0x80) >> 7;
+                                                pixel_data |= ((tile_2) & 0x80) >> 6;
 
                                                 if (pixel_data != 0){           // Ignoring transparent
                                                         graphics_raw[get_IOR(0x44)][j] = pixel_data;
@@ -231,18 +239,18 @@ drawline_lcd()                                                                  
                                                         // TODO: palettes!!!!----------------------------------------------------------
                                                 }
 
-                                                tile_1 >>= 1;
-                                                tile_2 >>= 1;
+                                                tile_1 <<= 1;
+                                                tile_2 <<= 1;
                                             }
                                 }
                                 else {
-                                        tile_1 >>= MAX(sprite_x - 8, 0) - (sprite_x - 8);        // Maybe clean these up?
-                                        tile_2 >>= MAX(sprite_x - 8, 0) - (sprite_x - 8);
+                                        tile_1 <<= MAX(sprite_x - 8, 0) - (sprite_x - 8);        // Maybe clean these up?
+                                        tile_2 <<= MAX(sprite_x - 8, 0) - (sprite_x - 8);
                                         for (int j = MAX(sprite_x - 8, 0); 
                                             j < MIN(sprite_x, 160); j++) {
                                                 // Getting data for the pixel
-                                                pixel_data = ((tile_1 << tile_x) & 0x80) >> 7;
-                                                pixel_data |= ((tile_2 << tile_x) & 0x80) >> 6;
+                                                pixel_data = ((tile_1) & 0x80) >> 7;
+                                                pixel_data |= ((tile_2) & 0x80) >> 6;
 
                                                 if (pixel_data != 0){           // Ignoring transparent
                                                         graphics_raw[get_IOR(0x44)][j] = pixel_data;
@@ -250,18 +258,20 @@ drawline_lcd()                                                                  
                                                         // TODO: palettes!!!!----------------------------------------------------------
                                                 }
 
-                                                tile_1 >>= 1;
-                                                tile_2 >>= 1;
+                                                tile_1 <<= 1;
+                                                tile_2 <<= 1;
                                         }
                                 }
                         }
 
                 }
         }
-        */
+        
 }
 
-
+/*
+ * Initialize SDL elements
+ */
 int
 init_SDL()
 {
@@ -286,6 +296,10 @@ init_SDL()
         return true; // Return true when there is no problem
 }
 
+
+/*
+ * Update SDL elements
+ */
 uint32_t colors[4] = {0xFFFFFFFF, 0xAAAAAAAA, 0x55555555, 0x00000000};
 void update_SDL()
 {

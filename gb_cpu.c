@@ -23,6 +23,7 @@ uint8_t HRAM[0x7F];     // High RAM
 uint8_t eram_bank;      // Switchable ERAM bank if any
 uint8_t wram_bank;      // Switchable WRAM bank 1-7
 
+// Basic DMG boot rom
 uint8_t BIOS[0x100] = {
 	0x31, 0xFE, 0xFF, 0xAF, 0x21, 0xFF, 0x9F, 0x32, 0xCB, 0x7C, 0x20, 0xFB, 0x21, 0x26, 0xFF, 0x0E,
 	0x11, 0x3E, 0x80, 0x32, 0xE2, 0x0C, 0x3E, 0xF3, 0xE2, 0x32, 0x3E, 0x77, 0x77, 0x3E, 0xFC, 0xE0,
@@ -41,6 +42,7 @@ uint8_t BIOS[0x100] = {
 	0x21, 0x04, 0x01, 0x11, 0xA8, 0x00, 0x1A, 0x13, 0xBE, 0x20, 0xFE, 0x23, 0x7D, 0xFE, 0x34, 0x20,
 	0xF5, 0x06, 0x19, 0x78, 0x86, 0x23, 0x05, 0x20, 0xFB, 0x86, 0x20, 0xFE, 0x3E, 0x01, 0xE0, 0x50 };
 
+// Number of cycles for each opcode
 uint8_t OP_CYCLES[0x100] = {
 	4,12, 8, 8, 4, 4, 8, 4,20, 8, 8, 8, 4, 4, 8, 4,   
 	4,12, 8, 8, 4, 4, 8, 4, 8, 8, 8, 8, 4, 4, 8, 4,   
@@ -132,7 +134,7 @@ uint8_t n2;
 uint16_t nn;
 uint32_t nnnn;
 
-
+// Initialize the cpu values and copy rom from main
 void
 init_cpu(uint8_t *rom)
 {
@@ -191,7 +193,7 @@ init_cpu(uint8_t *rom)
         */
 }
 
-
+// Read and return memory that would be at given addr
 uint8_t
 read_mem(uint16_t addr)
 {
@@ -328,6 +330,7 @@ read_mem(uint16_t addr)
         return 1;
 }
 
+// Write val to memory that would be at addr
 void
 write_mem(uint16_t addr, uint8_t val)
 {
@@ -466,7 +469,9 @@ write_mem(uint16_t addr, uint8_t val)
         }
 }
 
-
+/*
+ * Handle interrupts and execute a single opcode
+ */
 uint8_t
 execute()                                                                         // TODO: fix references to (HL) to be accurate
 {                                                                               // TODO: still missing misc, rotates, bit opcodes (3.3.5, 3.3.6, 3.3.7)
@@ -518,8 +523,9 @@ execute()                                                                       
 
 
         // Doing nothing if halted
-        if (HALT) return 4;
-
+        if (HALT) {
+                return 4;
+        }
         // Read next opcode
         opcode = read_mem(PC++);
         opcodes_run += 1;
@@ -2375,7 +2381,9 @@ execute()                                                                       
 }
 
 
-
+/*
+ *  Update cpu timers
+ */
 void
 update_timers(uint16_t cycles) 
 {
@@ -2401,6 +2409,9 @@ update_timers(uint16_t cycles)
         }
 }
 
+/*
+ * Update visual timers
+ */
 void
 update_lcd(uint16_t cycles)
 {
@@ -2452,6 +2463,7 @@ update_lcd(uint16_t cycles)
                         }
 
                         update_SDL();
+                        align_framerate();
                 }
                 
         }
@@ -2473,7 +2485,9 @@ update_lcd(uint16_t cycles)
         }
 }
 
-
+/*
+ * Getter and setter methods, alongside debug functions
+*/
 uint8_t
 get_IOR(uint16_t addr)
 {
