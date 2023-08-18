@@ -22,6 +22,7 @@ uint8_t HRAM[0x7F];     // High RAM
 
 uint8_t eram_bank;      // Switchable ERAM bank if any
 uint8_t wram_bank;      // Switchable WRAM bank 1-7
+uint16_t bank_mask;     // Mask for smaller ROM sizes
 
 // Basic DMG boot rom
 uint8_t BIOS[0x100] = {
@@ -105,19 +106,15 @@ uint16_t SP;                    // Stack pointer
 uint8_t opcode;                 // Current opcode
 long opcodes_run = 0;
 uint8_t cbcode;                 // Opcode for 2 byte operations
-uint8_t IME;                    // Interrupt Master Flag
+uint8_t IME = 1;                    // Interrupt Master Flag
 uint8_t IE;                     // Interrupt Enable
 uint8_t IF;                     // Interrupt Flag
 uint8_t HALT;                   // HALT flag
 
-// I/O flags
-uint8_t *BIOS_FLAG = &IOR[0x50];
-
-
 // MBC1 Mapper values
 uint8_t RAMG;                   // MBC1 RAM Gate Register
-uint8_t RBANK1;                 // MBC1 bank register 1
-uint8_t RBANK2;                 // MBC1 bank register 2
+uint8_t RBANK1 = 1;                 // MBC1 bank register 1
+uint8_t RBANK2 = 0;                 // MBC1 bank register 2
 uint8_t RMODE;                  // MBC1 mode register
 
 // Timer values
@@ -136,10 +133,9 @@ uint32_t nnnn;
 
 // Initialize the cpu values and copy rom from main
 void
-init_cpu(uint8_t *rom)
+init_cpu(uint8_t *rom, int num_banks)
 {
         ROM = rom;
-        memset(VRAM, 0, 0x2000);
         // Initial register and pointer values
         PC = 0x0000;
         div_lower = 0;
@@ -147,6 +143,15 @@ init_cpu(uint8_t *rom)
         lcd_cycles = 0;
         wram_bank = 1;
         eram_bank = 1;
+
+        // Setting up bank bask
+        switch(num_banks) {
+                case 2: bank_mask = 0x1; break;
+                case 4: bank_mask = 0x3; break;
+                case 8: bank_mask = 0x7; break;
+                case 16: bank_mask = 0xF; break;
+                default: bank_mask = 0x1F;
+        }
         /*
         //write_mem(0xFF50, 1);
         SP = 0xFFFE;
@@ -199,7 +204,7 @@ read_mem(uint16_t addr)
 {
         switch (addr & 0xF000) {
                 case 0x0000:
-                if (!(*BIOS_FLAG) && addr < 0x100) {
+                if (!IOR[0x50] && addr < 0x100) {
                         return BIOS[addr];
                 }
                 __attribute__ ((fallthrough));                                  // Might want to fix this
@@ -218,7 +223,7 @@ read_mem(uint16_t addr)
                 case 0x6000:
                 case 0x7000:                                                    // TODO: <16 mb roms
                 return ROM[addr - ROM_ADDR + 
-                    ((RBANK1 & 0x1F) + ((RBANK2 & 0x3) << 5) - 1) * 0x4000];          
+                    ((RBANK1 & bank_mask) + ((RBANK2 & 0x3) << 5) - 1) * 0x4000];          
                 break;
                 case 0x8000:
                 case 0x9000:
@@ -248,20 +253,28 @@ read_mem(uint16_t addr)
                 case 0xF000:
                 if (addr < OAM_ADDR)
                         return WRAM[addr - WRAM_ADDR + (wram_bank - 1) * 0x1000 - 0x2000];
-                if (addr < 0xFEA0)
+                else if (addr < 0xFEA0)
                         return OAM[addr - OAM_ADDR];
-                if (addr < IOR_ADDR)    // Unused memory
+                else if (addr < IOR_ADDR)    // Unused memory
                         return 0;
-                if (addr < HRAM_ADDR)  {  // I/O registers
+                else if (addr < HRAM_ADDR)  {  // I/O registers
                         switch (addr & 0xFF) {
                                 case 0x00:      // Joystick Register
-                                return IOR[0x00] | 0xC0;
+                                // Looking for directional keys
+                                if (!(IOR[0x00] & 0x10)) {
+                                        return (IOR[0x00] | 0xF) & ((get_joystick() & 0xF) | 0xF0);
+                                }
+                                // Looking for action keys
+                                if (!(IOR[0x00] & 0x20)) {
+                                        return (IOR[0x00] | 0xF) & (((get_joystick() >> 4) & 0xF) | 0xF0);
+                                }
+                                return 0x00;
                                 break;
                                 case 0x01:      // SB
                                 return IOR[0x01];
                                 break;
                                 case 0x02:      // SC
-                                return IOR[0x02];
+                                return IOR[0x02];       
                                 break;
                                 case 0x04:      // DIV Timer
                                 return IOR[0x04];
@@ -279,7 +292,7 @@ read_mem(uint16_t addr)
                                 return IOR[0x40];
                                 break;
                                 case 0x41:      // STAT                         // REQUIRES FIX
-                                if (IOR[0x40] & 0xF0) {
+                                if (IOR[0x40] & 0x80) {
                                         return IOR[0x41];
                                 }
                                 return (IOR[0x41] & 0xF8) | 0x1;             // Check bitwise operations
@@ -320,9 +333,9 @@ read_mem(uint16_t addr)
                         }
                         return IOR[addr - IOR_ADDR];
                 }
-                if (addr < 0xFFFF)
+                else if (addr < 0xFFFF)
                         return HRAM[addr - HRAM_ADDR];
-                if (addr == 0xFFFF)
+                else if (addr == 0xFFFF)
                         return IE;
                 break;
         }
@@ -357,9 +370,6 @@ write_mem(uint16_t addr, uint8_t val)
                 case 0x8000:
                 case 0x9000:
                 VRAM[addr - VRAM_ADDR + (IOR[0x4F] & 0x1) * 0x2000] = val;
-                if (verbose == 2) {
-                        printf("Writing %X to %X in VRAM\n", val, addr);
-                }
                 break;
                 case 0xA000:
                 case 0xB000:
@@ -385,22 +395,17 @@ write_mem(uint16_t addr, uint8_t val)
                         switch (addr & 0xFF) {
                                 case 0x00:      // Joystick registers
                                 IOR[0x00] = val & 0x30;
-                                IOR[0x00] |= 0xF;
-                                if (!(IOR[0x00] & 0x10)) {
-                                        IOR[0x00] &= get_joystick() | 0xF0;     // Check these calculations
-                                }
-                                if (!(IOR[0x00] & 0x20)) {
-                                        IOR[0x00] &= (get_joystick() >> 4) | 0xF0;
-                                }
                                 break;
                                 case 0x01:      // SB
                                 IOR[0x01] = val;
                                 break;
                                 case 0x02:      // SC
                                 IOR[0x02] = val;
+                                //if (verbose && val == 0x81) {printf("%c", IOR[0x01]);}
                                 break;
                                 case 0x04:      // DIV timer
                                 IOR[0x04] = 0;
+                                div_lower = 0;
                                 break;
                                 case 0x05:      // TIMA
                                 IOR[0x05] = val;
@@ -428,12 +433,13 @@ write_mem(uint16_t addr, uint8_t val)
                                 IOR[0x43] = val;
                                 break;
                                 case 0x44:      // LY
+                                IOR[0x44] = 0;                                  // Is this supposed to be a reset?
                                 break;
                                 case 0x45:      // LYC
                                 IOR[0x45] = val;
                                 break;
                                 case 0x46:      // OAM DMA Transfer
-                                IOR[0x46] = val;
+                                IOR[0x46] = val;                                // Does this require some bitwies opperations  
                                 for (uint8_t i = 0; i < 0xA0; i++) {            // TODO: check it doesn't exceed 0xDF?
                                         OAM[i] = read_mem((val << 8) + i);
                                 }
@@ -459,6 +465,9 @@ write_mem(uint16_t addr, uint8_t val)
                                 if (verbose) {
                                         printf("Exiting boot rom\n");
                                 }
+                                break;
+                                default:
+                                IOR[addr - IOR_ADDR] = val;                     // Might have issues
                                 break;
                         }
                 else if (addr < 0xFFFF)
@@ -487,7 +496,7 @@ execute()                                                                       
 
                         // Put PC on stack
                         write_mem(--SP, PC >> 8);
-                        write_mem(--SP, PC & 0xff);
+                        write_mem(--SP, PC & 0xFF);
 
                         // Vblank
                         if (IE & IF & 0x1) {
@@ -497,24 +506,28 @@ execute()                                                                       
 
                         // LCD STAT
                         else if (IE & IF & 0x2) {
+                                //if (verbose) printf("STAT interrupt\n");
                                 PC = 0x48;
                                 IF &= ~(0x2);
                         }
 
                         // Timer
                         else if (IE & IF & 0x4) {
+                                //if (verbose) printf("Timer interrupt\n");
                                 PC = 0x50;
                                 IF &= ~(0x4);
                         }
 
                         // Serial
                         else if (IE & IF & 0x8) {
+                                //if (verbose) printf("Serial interrupt\n");
                                 PC = 0x58;
                                 IF &= ~(0x8);
                         }
 
                         // Joypad
                         else if (IE & IF & 0x10) {
+                                if (verbose) printf("Joypad interrupt\n");
                                 PC = 0x60;
                                 IF &= ~(0x10);
                         }
@@ -574,7 +587,7 @@ execute()                                                                       
                                 reg.f |= 0x80;
                         }
                         reg.f |= 0x40;
-                        if (!(reg.b & 0x0F)) {
+                        if ((reg.b & 0x0F) == 0xF) {
                                 reg.f |= 0x20;
                         }
                         break;
@@ -582,11 +595,13 @@ execute()                                                                       
                         reg.b = read_mem(PC++);
                         break;
                         case 0x7:       // RLCA
-                        reg.a = (reg.a >> 7 | reg.a << 1);
+                        reg.a = (reg.a >> 7) | (reg.a << 1);
                         reg.f &= ~(0xF0);
+                        /*
                         if (reg.a == 0) {
-                                reg.f |= 0x80;
+                                reg.f |= 0x0;
                         }
+                        */
                         if (reg.a & 0x01) {
                                 reg.f |= 0x10;
                         }
@@ -631,7 +646,7 @@ execute()                                                                       
                                 reg.f |= 0x80;
                         }
                         reg.f |= 0x40;
-                        if (!(reg.c & 0x0F)) {
+                        if ((reg.c & 0x0F) == 0xF) {
                                 reg.f |= 0x20;
                         }
                         break;
@@ -641,9 +656,11 @@ execute()                                                                       
                         case 0xF:       // RRCA
                         reg.a = ((reg.a << 7) | (reg.a >> 1));
                         reg.f &= ~(0xF0);
+                        /*
                         if (reg.a == 0) {
                                 reg.f |= 0x80;
                         }
+                        */
                         if (reg.a & 0x80) {
                                 reg.f |= 0x10;
                         }
@@ -683,7 +700,7 @@ execute()                                                                       
                                 reg.f |= 0x80;
                         }
                         reg.f |= 0x40;
-                        if (!(reg.d & 0x0F)) {
+                        if ((reg.d & 0x0F) == 0xF) {
                                 reg.f |= 0x20;
                         }
                         break;
@@ -692,11 +709,13 @@ execute()                                                                       
                         break;
                         case 0x7:       // RLA
                         n = reg.a;
-                        reg.a = reg.a << 1 | ((reg.f & 0x10) >> 4);
+                        reg.a = (reg.a << 1) | ((reg.f & 0x10) >> 4);
                         reg.f &= ~(0xF0);
+                        /*
                         if (reg.a == 0) {
                                 reg.f |= 0x80;
                         }
+                        */
                         if (n & 0x80) {
                                 reg.f |= 0x10;
                         }
@@ -739,7 +758,7 @@ execute()                                                                       
                                 reg.f |= 0x80;
                         }
                         reg.f |= 0x40;
-                        if (!(reg.e & 0x0F)) {
+                        if ((reg.e & 0x0F) == 0xF) {
                                 reg.f |= 0x20;
                         }
                         break;
@@ -750,9 +769,11 @@ execute()                                                                       
                         n = reg.a;
                         reg.a = reg.a >> 1 | ((reg.f & 0x10) << 3);
                         reg.f &= ~(0xF0);
+                        /*
                         if (reg.a == 0) {
                                 reg.f |= 0x80;
                         }
+                        */
                         if (n & 0x01) {
                                 reg.f |= 0x10;
                         }
@@ -795,7 +816,7 @@ execute()                                                                       
                                 reg.f |= 0x80;
                         }
                         reg.f |= 0x40;
-                        if (!(reg.h & 0x0F)) {
+                        if ((reg.h & 0x0F) == 0xF) {
                                 reg.f |= 0x20;
                         }
                         break;
@@ -803,8 +824,23 @@ execute()                                                                       
                         reg.h = read_mem(PC++);
                         break;
                         case 0x7:       // DAA                                  // Potentially requires fix
+                        n2 = 0;
+                        if ((reg.f & 0x20) || (!(reg.f & 0x40) && (reg.a & 0xf) > 9)) {
+                                n2 = 6;
+                        }
+                        if ((reg.f & 0x10) || (!(reg.f & 0x40) && reg.a > 0x99)) {
+                                n2 |= 0x60;
+                                reg.f |= 0x10;
+                        }
+                        reg.a += (reg.f & 0x40) ? -n2 : n2;
+                        reg.f &= ~(0xA0);
+                        if (reg.a == 0) {
+                                reg.f |= 0x80;
+                        }
+                        
+                        /*      // Failed DAA impl
                         nn = reg.a;
-                        reg.f &= ~(0xB0);       // Reset flags
+                        reg.f &= ~(0xB0);       // Reset flags should be at end
                         // Subtraction case
                         if (reg.f & 0x40) {
                                 // Carries
@@ -832,6 +868,7 @@ execute()                                                                       
                                 reg.f |= 0x10;
                         }
                         reg.a = nn & 0xFF;
+                        */
                         break;
                         case 0x8:       // JR Z, n
                         n_signed = (int8_t) read_mem(PC++);
@@ -874,7 +911,7 @@ execute()                                                                       
                                 reg.f |= 0x80;
                         }
                         reg.f |= 0x40;
-                        if (!(reg.l & 0x0F)) {
+                        if ((reg.l & 0x0F) == 0xF) {
                                 reg.f |= 0x20;
                         }
                         break;
@@ -924,7 +961,7 @@ execute()                                                                       
                                 reg.f |= 0x80;
                         }
                         reg.f |= 0x40;
-                        if (!(n & 0x0F)) {
+                        if ((n & 0x0F) == 0xF) {
                                 reg.f |= 0x20;
                         }
                         write_mem(reg.hl, n);
@@ -977,7 +1014,7 @@ execute()                                                                       
                                 reg.f |= 0x80;
                         }
                         reg.f |= 0x40;
-                        if (!(reg.a & 0x0F)) {
+                        if ((reg.a & 0x0F) == 0xF) {
                                 reg.f |= 0x20;
                         }
                         break;
@@ -1967,7 +2004,7 @@ execute()                                                                       
                                 switch (cbcode & 0x8) {
                                         case 0x0:       // RL n
                                         n2 = n;
-                                        n = (n << 1) | (reg.f & 0x10 >> 4);
+                                        n = (n << 1) | ((reg.f & 0x10) >> 4);
                                         reg.f &= ~(0xF0);
                                         if (n == 0) {
                                                 reg.f |= 0x80;
@@ -1978,7 +2015,7 @@ execute()                                                                       
                                         break;
                                         case 0x8:       // RR n
                                         n2 = n;
-                                        n = (n >> 1) | (reg.f & 0x10 << 3);
+                                        n = (n >> 1) | ((reg.f & 0x10) << 3);
                                         reg.f &= ~(0xF0);
                                         if (n == 0) {
                                                 reg.f |= 0x80;
@@ -2036,15 +2073,17 @@ execute()                                                                       
                                         }
                                         break;
                                 }
+                                break;
                         }
                         // Bit opcodes
                         if ((cbcode & 0xC0) == 0x40) {    // BIT b, r             // Check these calculations
                                 n2 = (cbcode >> 3) & 0x7;
                                 reg.f &= ~(0xE0);
                                 reg.f |= 0x20;
-                                if (!((n >> n2) && 0x1)) {
+                                if ((n & (0x1 << n2)) == 0) {
                                         reg.f |= 0x80;
                                 }
+                                
                         }
                         if ((cbcode & 0xC0) == 0x80) {      // RES b, r
                                 n2 = (cbcode >> 3) & 0x7;
@@ -2259,18 +2298,25 @@ execute()                                                                       
                         break;
                         case 0x08:      // ADD SP, #
                         n_signed = (int8_t) read_mem(PC++);
-                        nn = SP + n;
+                        nn = SP + n_signed;
                         reg.f &= ~(0xF0);
-                        if ((n ^ SP ^ nn) & 0x1000) {
-                                reg.f |= 0x20;
+                        if (n_signed >= 0) {                                    // TODO: clean this up
+                                if ((SP & 0xFF) + n_signed > 0xFF) {
+                                        reg.f |= 0x10;
+                                }
+                                if ((SP & 0xF) + (n_signed & 0xF) > 0xF) {
+                                        reg.f |= 0x20;
+                                }
                         }
-                        if (n_signed >= 0 && SP > nn) {
-                                reg.f |= 0x10;
+                        else {
+                                if ((nn & 0xFF) <= (SP & 0xFF)) {
+                                        reg.f |= 0x10;
+                                }
+                                if ((nn & 0xF) <= (SP & 0xF)) {
+                                        reg.f |= 0x20;
+                                }
                         }
-                        else if (SP < nn) {
-                                reg.f |= 0x10;
-                        }
-                        SP = nn;
+                        SP = nn & 0xFFFF;
                         break;
                         case 0x09:      // JP HL
                         PC = reg.hl;
@@ -2303,7 +2349,7 @@ execute()                                                                       
                         case 0x01:      // POP AF
                         nn = read_mem(SP++);
                         nn |= read_mem(SP++) << 8;
-                        reg.af = nn;                                            // Is this legal?
+                        reg.af = nn & 0xFFF0;                                            // Is this legal?
                         break;
                         case 0x02:      // LD A, (C)
                         reg.a = read_mem(reg.c | 0xFF00);
@@ -2330,18 +2376,25 @@ execute()                                                                       
                         break;
                         case 0x08:      // LDHL SP,n                            // TODO: check these calculations
                         n_signed = (int8_t) read_mem(PC++);
-                        nn = SP + n;
+                        nn = SP + n_signed;
                         reg.f &= ~(0xF0);
-                        if ((n ^ SP ^ nn) & 0x1000) {
-                                reg.f |= 0x20;
+                        if (n_signed >= 0) {                                    // TODO: clean this up
+                                if ((SP & 0xFF) + n_signed > 0xFF) {
+                                        reg.f |= 0x10;
+                                }
+                                if ((SP & 0xF) + (n_signed & 0xF) > 0xF) {
+                                        reg.f |= 0x20;
+                                }
                         }
-                        if (n_signed >= 0 && SP > nn) {
-                                reg.f |= 0x10;
-                        }
-                        else if (SP < nn) {
-                                reg.f |= 0x10;
-                        }                                                       // These in particular, docs are unclear
-                        reg.hl = nnnn & 0xFFFF;                                 // Casting?
+                        else {
+                                if ((nn & 0xFF) <= (SP & 0xFF)) {
+                                        reg.f |= 0x10;
+                                }
+                                if ((nn & 0xF) <= (SP & 0xF)) {
+                                        reg.f |= 0x20;
+                                }
+                        }                                              // These in particular, docs are unclear
+                        reg.hl = nn;                                 // Casting?
                         break;
                         case 0x09:      // LD SP, HL
                         SP = reg.hl;
@@ -2415,9 +2468,8 @@ update_timers(uint16_t cycles)
 void
 update_lcd(uint16_t cycles)
 {
-        if (IOR[0x40] & 0x80) {
+        if (IOR[0x40] & 0x80)
                 lcd_cycles += cycles;
-        }
         // Update every 456 cycles
         if (lcd_cycles > 456) {
                 
@@ -2458,7 +2510,7 @@ update_lcd(uint16_t cycles)
 
                         IF |= 0x1;      // Request interrupt
 
-                        if (IOR[0x41] & 0x10) { // VBLANK STAT interrupt 
+                        if (IOR[0x41] & 0x10) { // VBLANK LCDC interrupt 
                                 IF |= 0x2;
                         }
 
@@ -2500,10 +2552,22 @@ get_OAM(uint16_t addr)
         return OAM[addr];
 }
 
+uint16_t
+get_PC()
+{
+        return PC;
+}
+
+long
+get_opcodes()
+{
+        return opcodes_run;
+}
+
 void
 print_registers() 
 {
-        printf("A: %X\nF: ", reg.a);
+        printf("A: %X F: ", reg.a);
         for (int i = 0; i < 4; i ++) {
                 if ((reg.f << i) & 0x80) printf("1");
                 else printf("0");
@@ -2514,6 +2578,7 @@ print_registers()
         printf("HL: %X\n", reg.hl);
         printf("PC: %X, SP: %X\n", PC, SP);
         printf("IE: %X, IF: %X\n", IE, IF);
+        printf("IME: %X, HALT: %X\n", IME, HALT);
         printf("Opcodes run: %ld\n", opcodes_run);
 }
 
@@ -2529,7 +2594,50 @@ print_lcd()
 }
 
 void
+log_memory()
+{
+        FILE *output;
+        output = fopen("Log.txt", "w+");
+        for (uint32_t i = 0x0; i <= 0xFFFF; i++) {
+                fprintf(output, "%4X: %2X\n", i, read_mem(i));
+        }
+        fclose(output);
+}
+
+void
 test()
 {
-        write_mem(0xFF0F, reg.a);
+        nn = PC;
+        printf("addr: %X, val: %X\n", nn, read_mem(PC++));
+}
+
+void
+update_joystick()
+{
+        IF |= 0x10;
+        /*
+	IOR[0x00] |= 0x0F;
+	if (!(IOR[0x00] & 0x10))
+        {
+		IOR[0x00] &= ((get_joystick() & 0x0F)) | 0x0F;
+                if ((IOR[0x00] & 0xF) != 0xF) {
+                        for (int i = 0; i < 8; i++) {
+                                if ((IOR[0x00] << i) & 0x80) printf("1");
+                                else printf("0");
+                        }
+                        printf("\n");
+                }
+        }
+	if (!(IOR[0x00] & 0x20))
+        {
+		IOR[0x00] &= (((get_joystick() >> 4) & 0x0F)) | 0x0F;
+                if ((IOR[0x00] & 0xF) != 0xF) {
+                        for (int i = 0; i < 8; i++) {
+                                if ((IOR[0x00] << i) & 0x80) printf("1");
+                                else printf("0");
+                        }
+                        printf("\n");
+                }
+        }
+        */
 }

@@ -13,16 +13,17 @@
 int verbose = 0;
 int debug = 0;
 int start = 0;
-// End of boot rom: 2303977
+
 // Rom reading
 uint8_t *load_rom;           // ROM from cartridge
 char *cartridge_types[] = {"ROM ONLY", "MBC1"};
 uint32_t rom_size;
 uint32_t ram_size;
+int num_banks;
 int cartridge_type = 0;
 
 // I/O other
-uint8_t joystick_flags;
+uint8_t joystick_flags = 0xFF;
 
 // If emulator is active
 bool active = true;
@@ -96,7 +97,7 @@ main(int argc, char **argv)
         }
 
         // Initialize Memory
-        init_cpu(load_rom);
+        init_cpu(load_rom, num_banks);
         init_gpu();
 
         // Initialize SDL
@@ -168,13 +169,34 @@ main(int argc, char **argv)
                                         print_lcd();
                                         break;
                                         case SDLK_z:
-                                        test();
+                                        log_memory();
                                         break;
                                         case SDLK_v:
-                                        update_SDL();
+                                        test();
                                         break;
                                         case SDLK_b:
                                                 print_raw();
+                                        break;
+                                        case SDLK_q:    // Go to specific time
+                                                long endpoint;
+                                                printf("Enter desired stop point: ");
+                                                scanf("%ld", &endpoint);
+                                                verbose = 0;
+                                                for (long i = get_opcodes(); i < endpoint; i++) {
+                                                        execute_frame();
+                                                }
+                                                verbose = 2;
+                                        break;
+                                        case SDLK_w:    // Run until specific PC address
+                                                int addr;
+                                                printf("Enter desired PC point: ");
+                                                scanf("%X", &addr);
+                                                verbose = 0;
+                                                while (get_PC() != addr) {
+                                                        execute_frame();
+                                                }
+                                                verbose = 2;
+                                                printf("Reached desired position\n");
                                         break;
                                 }
                         }
@@ -194,56 +216,56 @@ main(int argc, char **argv)
                                         active = false;
                                         break;
                                         case SDLK_RIGHT:
-                                        joystick_flags &= ~(0x1);
+                                        key_press(0x1);
                                         break;
                                         case SDLK_LEFT:
-                                        joystick_flags &= ~(0x2);
+                                        key_press(0x2);
                                         break;
                                         case SDLK_UP:
-                                        joystick_flags &= ~(0x4);
+                                        key_press(0x4);
                                         break;
                                         case SDLK_DOWN:
-                                        joystick_flags &= ~(0x8);
+                                        key_press(0x8);
                                         break;
                                         case SDLK_x:    // A Key
-                                        joystick_flags &= ~(0x10);
+                                        key_press(0x10);
                                         break;
                                         case SDLK_z:    // B Key
-                                        joystick_flags &= ~(0x20);
+                                        key_press(0x20);
                                         break;
                                         case SDLK_s:    // Select Key
-                                        joystick_flags &= ~(0x40);
+                                        key_press(0x40);
                                         break;
                                         case SDLK_a:    // Start Key
-                                        joystick_flags &= ~(0x80);
+                                        key_press(0x80);
                                         break;
                                 }
                                 break;
                                 case SDL_KEYUP:
                                 switch( event.key.keysym.sym ){
                                         case SDLK_RIGHT:
-                                        joystick_flags |= (0x1);
+                                        key_release(0x1);
                                         break;
                                         case SDLK_LEFT:
-                                        joystick_flags |= (0x2);
-                                        break;
-                                        case SDLK_DOWN:
-                                        joystick_flags |= (0x4);
+                                        key_release(0x2);
                                         break;
                                         case SDLK_UP:
-                                        joystick_flags |= (0x8);
+                                        key_release(0x4);
+                                        break;
+                                        case SDLK_DOWN:
+                                        key_release(0x8);
                                         break;
                                         case SDLK_x:    // A Key
-                                        joystick_flags |= (0x10);
+                                        key_release(0x10);
                                         break;
                                         case SDLK_z:    // B Key
-                                        joystick_flags |= (0x20);
+                                        key_release(0x20);
                                         break;
-                                        case SDLK_s:    // Select Key
-                                        joystick_flags |= (0x40);
+                                        case SDLK_s:    // Select Keys  
+                                        key_release(0x40);
                                         break;
                                         case SDLK_a:    // Start Key
-                                        joystick_flags |= (0x80);
+                                        key_release(0x80);
                                         break;
                                         case SDLK_p:
                                         print_registers();
@@ -255,9 +277,11 @@ main(int argc, char **argv)
                 }
 
                 // Align framerate (INCOMPLETE)
-                for (int i = 0; i < 10; i++) {
+                
+                for (int i = 0; i < 2; i++) {
                         usleep(900);
                 }
+                
 
                 // DO CPU STUFF
                 curr_cycles = execute();
@@ -274,9 +298,11 @@ main(int argc, char **argv)
                 //4194304
                 if (total_cycles > 4194304 && verbose) {
                         total_cycles = 0;
+                        /*
                         if (verbose) {
                                 printf("second\n");
                         }
+                        */
                 }
         }
         }
@@ -327,18 +353,18 @@ read_rom(char *filename)
 
         // ROM Size
         switch (load_rom[0x148]) {
-                case 0x0: rom_size = 0x8000; break;
-                case 0x1: rom_size = 0x10000; break;
-                case 0x2: rom_size = 0x20000; break;
-                case 0x3: rom_size = 0x40000; break;
-                case 0x4: rom_size = 0x80000; break;
-                case 0x5: rom_size = 0x100000; break;
-                case 0x6: rom_size = 0x200000; break;
-                case 0x7: rom_size = 0x400000; break;
-                case 0x8: rom_size = 0x800000; break;
-                case 0x52: rom_size = 0x120000; break;
-                case 0x53: rom_size = 0x140000; break;
-                case 0x54: rom_size = 0x160000; break;
+                case 0x0: rom_size = 0x8000; num_banks = 2; break;
+                case 0x1: rom_size = 0x10000; num_banks = 4; break;
+                case 0x2: rom_size = 0x20000; num_banks = 8; break;
+                case 0x3: rom_size = 0x40000; num_banks = 16; break;
+                case 0x4: rom_size = 0x80000; num_banks = 32; break;
+                case 0x5: rom_size = 0x100000; num_banks = 64; break;
+                case 0x6: rom_size = 0x200000; num_banks = 128; break;
+                case 0x7: rom_size = 0x400000; num_banks = 256; break;
+                case 0x8: rom_size = 0x800000; num_banks = 512; break;
+                case 0x52: rom_size = 0x120000; num_banks = 72; break;
+                case 0x53: rom_size = 0x140000; num_banks = 80; break;
+                case 0x54: rom_size = 0x160000; num_banks = 96; break;
                 default: if (verbose) printf("Error reading ROM size");
         }
 
@@ -373,6 +399,22 @@ get_joystick()
         return joystick_flags;
 }
 
+void
+key_press(uint8_t key)
+{
+        if (joystick_flags & key) {
+                update_joystick();
+                joystick_flags &= ~(key);
+        }
+        update_joystick();
+}
+
+void
+key_release(uint8_t key)
+{
+        joystick_flags |= key;
+        update_joystick();
+}
 /*
  *      Wait between visual frames so that the timing is right
  *      Each frame should be 1.8 milliseconds

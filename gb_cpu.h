@@ -4,7 +4,7 @@
 /*
  *	Function headers
  */
-void init_cpu(uint8_t *rom);
+void init_cpu(uint8_t *rom, int num_banks);
 uint8_t read_mem(uint16_t addr);
 void write_mem(uint16_t addr, uint8_t val);
 void update_timers(uint16_t cycles);
@@ -12,7 +12,11 @@ void update_lcd(uint16_t cycles);
 uint8_t execute();
 uint8_t get_IOR(uint16_t addr);
 uint8_t get_OAM(uint16_t addr);
+uint16_t get_PC();
+long get_opcodes();
+void log_memory();
 void print_registers();
+void update_joystick();
 void print_lcd();
 void test();
 

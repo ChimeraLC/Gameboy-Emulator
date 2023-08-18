@@ -285,7 +285,7 @@ init_SDL()
         window = SDL_CreateWindow("Gameboy", 
                                         SDL_WINDOWPOS_CENTERED,
                                         SDL_WINDOWPOS_CENTERED,
-                                        800, 720, 0);
+                                        480, 432, 0);
 
         renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
         SDL_RenderSetLogicalSize(renderer, 160, 144);
