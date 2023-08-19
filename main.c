@@ -17,13 +17,14 @@ int start = 0;
 // Rom reading
 uint8_t *load_rom;           // ROM from cartridge
 char *cartridge_types[] = {"ROM ONLY", "MBC1"};
+// Saving read rom/ram sizes
 uint32_t rom_size;
 uint32_t ram_size;
-int num_banks;
-int cartridge_type = 0;
+int num_banks;              // Number of rom banks
+int cartridge_type = 0;     // Cartridge banking type
 
 // I/O other
-uint8_t joystick_flags = 0xFF;
+uint8_t joystick_flags = 0xFF; // Joystick bits for reading 0xFF00
 
 // If emulator is active
 bool active = true;
@@ -33,7 +34,7 @@ long last_frame;
 long current_frame;
 
 // Cycle Emulation
-uint16_t curr_cycles;
+uint16_t curr_cycles;           // Cycle count of curent cpu operation
 long total_cycles = 0;
 
 int
@@ -54,7 +55,7 @@ main(int argc, char **argv)
                         debug = 1;
                         verbose = 2;
                         break;
-                case 's':
+                case 's':       // Start point of debug
                         start = atoi(optarg);
                         if (start < 0) {
                                 printf("Start point must be nonnegative\n");
@@ -174,9 +175,6 @@ main(int argc, char **argv)
                                         case SDLK_v:
                                         test();
                                         break;
-                                        case SDLK_b:
-                                                print_raw();
-                                        break;
                                         case SDLK_q:    // Go to specific time
                                                 long endpoint;
                                                 printf("Enter desired stop point: ");
@@ -210,7 +208,7 @@ main(int argc, char **argv)
                 // Get SDL events
                 while(SDL_PollEvent( &event ) ){
                         switch( event.type ){
-                                case SDL_KEYDOWN:
+                                case SDL_KEYDOWN: // Key press
                                 switch (event.key.keysym.sym){
                                         case SDLK_ESCAPE:
                                         active = false;
@@ -241,7 +239,7 @@ main(int argc, char **argv)
                                         break;
                                 }
                                 break;
-                                case SDL_KEYUP:
+                                case SDL_KEYUP: // Key release
                                 switch( event.key.keysym.sym ){
                                         case SDLK_RIGHT:
                                         key_release(0x1);
@@ -283,27 +281,17 @@ main(int argc, char **argv)
                 }
                 
 
-                // DO CPU STUFF
+                // CPU emulation
                 curr_cycles = execute();
 
-                // Rendering
+                // Timer updates
                 update_lcd(curr_cycles);
+
+                // Rendering
                 update_timers(curr_cycles);
 
-                // UPDATE SDL
-                //update_SDL();
-
                 // TIming?
-                total_cycles += curr_cycles;
-                //4194304
-                if (total_cycles > 4194304 && verbose) {
-                        total_cycles = 0;
-                        /*
-                        if (verbose) {
-                                printf("second\n");
-                        }
-                        */
-                }
+                //total_cycles += curr_cycles;
         }
         }
 
@@ -318,6 +306,7 @@ read_rom(char *filename)
 {
         FILE *rom_file = fopen(filename, "rb");
 
+        // Output error if file missing
         if (rom_file == NULL) {
                 printf("Error opening provided filename\n");
                 return -1;
@@ -399,6 +388,9 @@ get_joystick()
         return joystick_flags;
 }
 
+/*
+ * Updates joystick flags (set corresponding key to 0 in joystick flags)
+ */
 void
 key_press(uint8_t key)
 {
@@ -409,6 +401,10 @@ key_press(uint8_t key)
         update_joystick();
 }
 
+
+/*
+ * Updates joystick flags (set corresponding key to 1 in joystick flags)
+ */
 void
 key_release(uint8_t key)
 {
@@ -423,6 +419,7 @@ void
 align_framerate()
 {
 }
+
 /*
  * Execute a single opcode worth of actions (for debugging)
  */

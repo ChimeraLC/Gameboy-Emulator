@@ -35,6 +35,9 @@ SDL_Texture *texture;
 uint32_t graphics[144][160];
 uint8_t graphics_raw[144][160];
 
+/*
+ * Initializes GPU (current unused)
+ */
 void
 init_gpu()
 {
@@ -42,7 +45,7 @@ init_gpu()
 
 // Draw a single line on LCD
 void
-drawline_lcd()                                                                  // Seems very incorrect
+drawline_lcd()                                                       
 {
         if (verbose == 2) {
                 printf("Drawing line %d\n", get_IOR(0x44));
@@ -279,7 +282,7 @@ init_SDL()
         if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
                 // Send message if fails
                 printf("error initializing SDL: %s\n", SDL_GetError());
-                return false;
+                return -1;
         }
         // Create parts of window (64 by 32 pixels)
         window = SDL_CreateWindow("Gameboy", 
@@ -293,7 +296,7 @@ init_SDL()
 
         texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, 
                                         SDL_TEXTUREACCESS_STREAMING, 160, 144);
-        return true; // Return true when there is no problem
+        return 1; // Return 1 when there is no problem
 }
 
 
@@ -314,14 +317,4 @@ void update_SDL()
         SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer, texture, NULL, NULL);
         SDL_RenderPresent(renderer);
-}
-
-void print_raw()
-{
-        for (int i = 0; i < 144; i++) {
-                for (int j = 0; j < 160; j++) {
-                        printf("%X",graphics_raw[i][j]);
-                }
-                printf("\n");
-        }
 }
