@@ -112,10 +112,12 @@ uint8_t IF;                     // Interrupt Flag
 uint8_t HALT;                   // HALT flag
 
 // MBC1 Mapper values
+int cartridge_mapper = 0;
 uint8_t RAMG;                   // MBC1 RAM Gate Register
 uint8_t RBANK1 = 1;                 // MBC1 bank register 1
 uint8_t RBANK2 = 0;                 // MBC1 bank register 2
 uint8_t RMODE;                  // MBC1 mode register
+uint8_t MBC3_cwrite = 1;        // MBC3 clock latch write tracker
 
 // Timer values
 uint16_t div_lower;             // Cycle count for div timer
@@ -133,10 +135,12 @@ uint32_t nnnn;
 
 // Initialize the cpu values and copy rom from main
 void
-init_cpu(uint8_t *rom, int num_banks)
+init_cpu(uint8_t *rom, int num_banks, int cartridge)
 {
         // Save rom to self
         ROM = rom;
+        // Saving cartridge type
+        cartridge_mapper = cartridge;
         // Initial register and pointer values
         PC = 0x0000;
         div_lower = 0;
@@ -212,10 +216,17 @@ read_mem(uint16_t addr)
                 case 0x1000:
                 case 0x2000:
                 case 0x3000:    // ROM bank 00
-                if (RMODE & 0x1) {
-                        return ROM[addr + ((RBANK2 & 0x3) << 5) * ROM_BANK_SIZE];
+                // MBC1
+                if (cartridge_mapper == 1) {
+                        if (RMODE & 0x1) {
+                                return ROM[addr + ((RBANK2 & 0x3) << 5) * ROM_BANK_SIZE];
+                        }
+                        else {
+                                return ROM[addr];
+                        }
                 }
-                else {
+                // MBC3
+                else if (cartridge_mapper == 2) {
                         return ROM[addr];
                 }
                 break;
@@ -223,8 +234,15 @@ read_mem(uint16_t addr)
                 case 0x5000:
                 case 0x6000:
                 case 0x7000:   // ROM bank 01~NN                                   // TODO: <16 mb roms
-                return ROM[addr - ROM_ADDR + 
-                    ((RBANK1 & bank_mask) + ((RBANK2 & 0x3) << 5) - 1) * 0x4000];          
+                // MBC1
+                if (cartridge_mapper == 1) {
+                        return ROM[addr - ROM_ADDR + 
+                                ((RBANK1 & bank_mask) + ((RBANK2 & 0x3) << 5) - 1) * 0x4000];          
+                }
+                // MBC3
+                if (cartridge_mapper == 3) {
+                        return ROM[addr - ROM_ADDR + (RBANK1 & 0x7F) * 0x4000];
+                }
                 break;
                 case 0x8000:
                 case 0x9000:   // VRAM
@@ -232,15 +250,32 @@ read_mem(uint16_t addr)
                 break;
                 case 0xA000:
                 case 0xB000:    // External Ram
-                if ((RAMG & 0x0F) == 0x0A) {      // Check if RAM enabled
-                        if (RMODE & 0x1) {
-                                return ERAM[addr - ERAM_ADDR + (RBANK2 & 0x3) * ERAM_BANK_SIZE];
+                // MBC1
+                if (cartridge_mapper == 1) {
+                        if ((RAMG & 0x0F) == 0x0A) {      // Check if RAM enabled
+                                if (RMODE & 0x1) {
+                                        return ERAM[addr - ERAM_ADDR + (RBANK2 & 0x3) * ERAM_BANK_SIZE];
+                                }
+                                else {
+                                        return ERAM[addr - ERAM_ADDR];
+                                }
                         }
-                        else {
-                                return ERAM[addr - ERAM_ADDR];
-                        }
+                        return 0;
                 }
-                return 0;
+                // MBC3
+                else if (cartridge_mapper == 3) {
+                        if ((RAMG & 0x0F) == 0x0A) {      // Check if RAM enabled
+                                // RAM Bank Number
+                                if (RBANK2 <= 0x03) {
+                                        return ERAM[addr - ERAM_ADDR + (RBANK2 & 0x3) * ERAM_BANK_SIZE];
+                                }
+                                // RTC Registers
+                                if (RBANK2 <= 0x0C && RBANK2 >= 0x08) {
+                                        return IOR[RBANK2];
+                                }
+                        }
+                        return 0;
+                }
                 break;
                 case 0xC000:    // Working ram bank 0
                 return WRAM[addr - WRAM_ADDR];
@@ -341,7 +376,7 @@ read_mem(uint16_t addr)
                 break;
         }
 
-        return 1;
+        return 0xFF;
 }
 
 // Write val to memory that would be at addr
@@ -356,8 +391,15 @@ write_mem(uint16_t addr, uint8_t val)
                 case 0x2000:
                 case 0x3000:    // ROM bank number
                 RBANK1 = val;
-                if (!(RBANK1 & 0x1F)) {
-                        RBANK1 |= 0x1;
+                if (cartridge_mapper == 1) {      // MBC1
+                        if (!(RBANK1 & 0x1F)) {
+                                RBANK1 |= 0x1;
+                        }
+                }
+                if (cartridge_mapper == 3) {      // MBC3
+                        if ((RBANK1 & 0x7F) == 0x00) {
+                                RBANK1 |= 0x1;
+                        }
                 }
                 break;
                 case 0x4000:
@@ -366,15 +408,44 @@ write_mem(uint16_t addr, uint8_t val)
                 break;
                 case 0x6000:
                 case 0x7000:    // Banking mode
-                RMODE = val;
+                if (cartridge_mapper == 1)
+                        RMODE = val;
+                else if (cartridge_mapper == 3) {
+                        if (MBC3_cwrite == 0x0 && val == 0x1) 
+                                latch_clock();
+                        MBC3_cwrite = val;
+                }
                 break;
                 case 0x8000:
                 case 0x9000:    // VRAM
                 VRAM[addr - VRAM_ADDR + (IOR[0x4F] & 0x1) * 0x2000] = val;
                 break;
                 case 0xA000:
-                case 0xB000:    // External RAM
-                ERAM[addr - ERAM_ADDR + (eram_bank) * 0x2000] = val;
+                case 0xB000:    // External Ram
+                // MBC1
+                if (cartridge_mapper == 1) {
+                        if ((RAMG & 0x0F) == 0x0A) {      // Check if RAM enabled
+                                if (RMODE & 0x1) {
+                                        ERAM[addr - ERAM_ADDR + (RBANK2 & 0x3) * ERAM_BANK_SIZE] = val;
+                                }
+                                else {
+                                        ERAM[addr - ERAM_ADDR] = val;
+                                }
+                        }
+                }
+                // MBC3
+                else if (cartridge_mapper == 3) {
+                        if ((RAMG & 0x0F) == 0x0A) {      // Check if RAM enabled
+                                // RAM Bank Number
+                                if (RBANK2 <= 0x03) {
+                                        ERAM[addr - ERAM_ADDR + (RBANK2 & 0x3) * ERAM_BANK_SIZE] = val;
+                                }
+                                // RTC Registers
+                                if (RBANK2 <= 0x0C && RBANK2 >= 0x08) {
+                                        IOR[RBANK2] = val;
+                                }
+                        }
+                }
                 break;
                 case 0xC000:    // WRAM bank 0
                 WRAM[addr - WRAM_ADDR] = val;
@@ -416,6 +487,21 @@ write_mem(uint16_t addr, uint8_t val)
                                 break;
                                 case 0x07:      // TAC
                                 IOR[0x07] = val;
+                                break;
+                                case 0x08:      // RTC S
+                                IOR[0x08] = val;
+                                break;
+                                case 0x09:      // RTC M
+                                IOR[0x09] = val;
+                                break;
+                                case 0x0A:      // RTC H
+                                IOR[0x0A] = val;
+                                break;
+                                case 0x0B:      // RTC DL
+                                IOR[0x0B] = val;
+                                break;
+                                case 0x0C:      // RTC DH
+                                IOR[0x0C] = val;
                                 break;
                                 case 0x0F:      // IF register
                                 IF = val;
@@ -2593,4 +2679,14 @@ void
 update_joystick()
 {
         IF |= 0x10;
+}
+
+/*
+ *  Latches the RTC registers
+ */
+void
+latch_clock()
+{
+        // Incomplete: Get real time
+        return;
 }

@@ -3,7 +3,8 @@
 /*
  * Shared variables
  */
-extern int verbose;
+extern int verbose;             // Verbosity
+extern int cartridge_type; // Cartridge banking type
 
 /*
  * Function headers

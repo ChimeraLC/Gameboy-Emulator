@@ -16,12 +16,12 @@ int start = 0;
 
 // Rom reading
 uint8_t *load_rom;           // ROM from cartridge
-char *cartridge_types[] = {"ROM ONLY", "MBC1"};
+int cartridge_type; // Cartridge banking type
+char *cartridge_types[] = {"ROM ONLY", "MBC1", "MBC2", "MBC3"};
 // Saving read rom/ram sizes
 uint32_t rom_size;
 uint32_t ram_size;
 int num_banks;              // Number of rom banks
-int cartridge_type = 0;     // Cartridge banking type
 
 // I/O other
 uint8_t joystick_flags = 0xFF; // Joystick bits for reading 0xFF00
@@ -98,7 +98,7 @@ main(int argc, char **argv)
         }
 
         // Initialize Memory
-        init_cpu(load_rom, num_banks);
+        init_cpu(load_rom, num_banks, cartridge_type);
         init_gpu();
 
         // Initialize SDL
@@ -208,6 +208,9 @@ main(int argc, char **argv)
                 // Get SDL events
                 while(SDL_PollEvent( &event ) ){
                         switch( event.type ){
+                                case SDL_QUIT:  // Closing window
+                                active = false;
+                                break;
                                 case SDL_KEYDOWN: // Key press
                                 switch (event.key.keysym.sym){
                                         case SDLK_ESCAPE:
@@ -329,6 +332,13 @@ read_rom(char *filename)
                 case 2:
                 case 3:
                 cartridge_type = 1;
+                break;
+                case 15:
+                case 16:
+                case 17:
+                case 18:
+                case 19:
+                cartridge_type = 3;
                 break;
                 default:
                 if (verbose) {
