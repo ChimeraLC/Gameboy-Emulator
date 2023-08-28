@@ -29,6 +29,9 @@ uint8_t joystick_flags = 0xFF; // Joystick bits for reading 0xFF00
 // If emulator is active
 bool active = true;
 
+// Whether to run boot rom
+bool boot_flag = true;
+
 // Framerate syncing
 long last_frame;
 long current_frame;
@@ -42,18 +45,21 @@ main(int argc, char **argv)
 {
         // Checking for verbose flag
         char c;
-        while ((c = getopt (argc, argv, "vdVs:")) != -1) {
+        while ((c = getopt (argc, argv, "bvdVs:")) != -1) {
                 switch (c)
                 {
-                case 'v':
+                case 'v':       // Verbose flags
                         verbose = 1;
                         break;
                 case 'V':
                         verbose = 2;
                         break;
-                case 'd':
+                case 'd':       // Debug flags
                         debug = 1;
                         verbose = 2;
+                        break;
+                case 'b':       // Skipping boot rom
+                        boot_flag = false;
                         break;
                 case 's':       // Start point of debug
                         start = atoi(optarg);
@@ -98,7 +104,7 @@ main(int argc, char **argv)
         }
 
         // Initialize Memory
-        init_cpu(load_rom, num_banks, cartridge_type);
+        init_cpu(load_rom, num_banks, cartridge_type, boot_flag);
         init_gpu();
 
         // Initialize SDL
@@ -171,9 +177,6 @@ main(int argc, char **argv)
                                         break;
                                         case SDLK_z:
                                         log_memory();
-                                        break;
-                                        case SDLK_v:
-                                        test();
                                         break;
                                         case SDLK_q:    // Go to specific time
                                                 long endpoint;

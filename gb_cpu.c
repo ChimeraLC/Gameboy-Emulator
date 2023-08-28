@@ -135,7 +135,7 @@ uint32_t nnnn;
 
 // Initialize the cpu values and copy rom from main
 void
-init_cpu(uint8_t *rom, int num_banks, int cartridge)
+init_cpu(uint8_t *rom, int num_banks, int cartridge, bool boot)
 {
         // Save rom to self
         ROM = rom;
@@ -157,50 +157,52 @@ init_cpu(uint8_t *rom, int num_banks, int cartridge)
                 case 16: bank_mask = 0xF; break;
                 default: bank_mask = 0x1F;
         }
-        /* Values used if boot rom is skipped
-        //write_mem(0xFF50, 1);
-        SP = 0xFFFE;
-        reg.af = 0x01B0;
-        reg.bc = 0x0013;
-        reg.de = 0x00D8;
-        reg.hl = 0x014D;
+        // Values used if boot rom is skipped
+        if (boot == false) {
 
-        
+                //write_mem(0xFF50, 1);
+                SP = 0xFFFE;
+                reg.af = 0x01B0;
+                reg.bc = 0x0013;
+                reg.de = 0x00D8;
+                reg.hl = 0x014D;
 
-        // Initial memory values
-        //IOR[0x04] = 0xABCC;
-        IOR[0x05] = 0x00;
-        IOR[0x06] = 0x00;
-        IOR[0x07] = 0x00;
-        IOR[0x10] = 0x80;
-        IOR[0x11] = 0xBF;
-        IOR[0x12] = 0xF3;
-        IOR[0x14] = 0xBF;
-        IOR[0x16] = 0x3F;
-        IOR[0x17] = 0x00;
-        IOR[0x19] = 0xBF;
-        IOR[0x1A] = 0x7F;
-        IOR[0x1B] = 0xFF;
-        IOR[0x1C] = 0x9F;
-        IOR[0x1E] = 0xBF;
-        IOR[0x20] = 0xFF;
-        IOR[0x21] = 0x00;
-        IOR[0x22] = 0x00;
-        IOR[0x23] = 0xBF;
-        IOR[0x24] = 0x77;
-        IOR[0x25] = 0xF3;
-        IOR[0x26] = 0xF1;
-        IOR[0x40] = 0x91;
-        IOR[0x42] = 0x00;
-        IOR[0x43] = 0x00;
-        IOR[0x45] = 0x00;
-        IOR[0x47] = 0xFC;
-        IOR[0x48] = 0xFF;
-        IOR[0x49] = 0x0F;
-        IOR[0x4A] = 0x00;
-        IOR[0x4B] = 0x00;
-        IE = 0x00;
-        */
+                PC = 0x0100;
+                // Initial memory values
+                //IOR[0x04] = 0xABCC;
+                IOR[0x05] = 0x00;
+                IOR[0x06] = 0x00;
+                IOR[0x07] = 0x00;
+                IOR[0x10] = 0x80;
+                IOR[0x11] = 0xBF;
+                IOR[0x12] = 0xF3;
+                IOR[0x14] = 0xBF;
+                IOR[0x16] = 0x3F;
+                IOR[0x17] = 0x00;
+                IOR[0x19] = 0xBF;
+                IOR[0x1A] = 0x7F;
+                IOR[0x1B] = 0xFF;
+                IOR[0x1C] = 0x9F;
+                IOR[0x1E] = 0xBF;
+                IOR[0x20] = 0xFF;
+                IOR[0x21] = 0x00;
+                IOR[0x22] = 0x00;
+                IOR[0x23] = 0xBF;
+                IOR[0x24] = 0x77;
+                IOR[0x25] = 0xF3;
+                IOR[0x26] = 0xF1;
+                IOR[0x40] = 0x91;
+                IOR[0x42] = 0x00;
+                IOR[0x43] = 0x00;
+                IOR[0x45] = 0x00;
+                IOR[0x47] = 0xFC;
+                IOR[0x48] = 0xFF;
+                IOR[0x49] = 0x0F;
+                IOR[0x4A] = 0x00;
+                IOR[0x4B] = 0x00;
+                IOR[0x50] = 1;
+                IE = 0x00;
+        }
 }
 
 // Read and return memory that would be at given addr
@@ -226,7 +228,7 @@ read_mem(uint16_t addr)
                         }
                 }
                 // MBC3
-                else if (cartridge_mapper == 2) {
+                else if (cartridge_mapper == 3) {
                         return ROM[addr];
                 }
                 break;
@@ -2666,12 +2668,6 @@ log_memory()
         fclose(output);
 }
 
-void
-test()
-{
-        nn = PC;
-        printf("addr: %X, val: %X\n", nn, read_mem(PC++));
-}
 /*
  * Triggered when joystick changes
  */
