@@ -33,8 +33,9 @@ bool active = true;
 bool boot_flag = true;
 
 // Framerate syncing
-long last_frame;
-long current_frame;
+long last_tick;
+long current_tick;
+long catchup_ticks = 0;
 
 // Cycle Emulation
 uint16_t curr_cycles;           // Cycle count of curent cpu operation
@@ -115,7 +116,7 @@ main(int argc, char **argv)
         SDL_Event event;
         
         // First frame
-        last_frame = SDL_GetTicks();
+        last_tick = SDL_GetTicks();
 
         // Debug setup
         if (debug) {
@@ -279,13 +280,7 @@ main(int argc, char **argv)
                                 break;
                         }
                 }
-
-                // Align framerate (INCOMPLETE)
-                
-                for (int i = 0; i < 2; i++) {
-                        usleep(900);
-                }
-                
+                // Framerate alignment done via cpu.c and align_framerate
 
                 // CPU emulation
                 curr_cycles = execute();
@@ -300,7 +295,9 @@ main(int argc, char **argv)
                 //total_cycles += curr_cycles;
         }
         }
-
+        if (verbose) {
+                printf("Exiting program\n");
+        }
         return 1;
 }
 
@@ -431,6 +428,20 @@ key_release(uint8_t key)
 void
 align_framerate()
 {
+        // Milliseconds
+        current_tick = SDL_GetTicks();
+        long frame_diff = current_tick - last_tick;
+        last_tick = current_tick;
+        // ~17 milliseconds per frame
+        if (frame_diff + catchup_ticks < 17) {
+                SDL_Delay(17 - frame_diff);                                     // TODO: get this to 16.666 rather than 17
+                catchup_ticks = 0;
+        }
+        // Catching up framerate when behind
+        else {
+                catchup_ticks += frame_diff - 17;
+        }
+        last_tick = current_tick;
 }
 
 /*
