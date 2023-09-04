@@ -16,6 +16,7 @@ uint8_t get_joystick();
 void align_framerate();
 void key_press(uint8_t key);
 void key_release(uint8_t key);
+void usage();
 
 #define MIN(a, b)   ((a) < (b) ? (a) : (b))
 #define MAX(a, b)   ((a) < (b) ? (b) : (a))

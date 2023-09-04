@@ -91,7 +91,9 @@ drawline_lcd()
                         pixel_data = ((tile_1 << tile_x) & 0x80) >> 7;
                         pixel_data |= ((tile_2 << tile_x) & 0x80) >> 6;
                         
-                        graphics_raw[get_IOR(0x44)][x] = pixel_data;
+                        //graphics_raw[get_IOR(0x44)][x] = pixel_data;          // Version missing palettes
+                        graphics_raw[get_IOR(0x44)][x] =
+                          (get_IOR(0x47) >> (pixel_data * 2)) & 0x3;
 
                         tile_x++;
                         if (tile_x == 8) {      // Get next tile in row
@@ -162,7 +164,9 @@ drawline_lcd()
                         pixel_data = ((tile_1 << tile_x) & 0x80) >> 7;
                         pixel_data |= ((tile_2 << tile_x) & 0x80) >> 6;
 
-                        graphics_raw[get_IOR(0x44)][x + (get_IOR(0x4B) - 7)] = pixel_data;
+                        //graphics_raw[get_IOR(0x44)][x + (get_IOR(0x4B) - 7)] = pixel_data;          // Version missing palettes
+                        graphics_raw[get_IOR(0x44)][x + (get_IOR(0x4B) - 7)] =
+                          (get_IOR(0x47) >> (pixel_data * 2)) & 0x3;
 
                         tile_x ++;
                         if (tile_x == 8) {      // Get next tile in row
@@ -237,9 +241,14 @@ drawline_lcd()
                                                 pixel_data |= ((tile_2) & 0x80) >> 6;
 
                                                 if (pixel_data != 0){           // Ignoring transparent
-                                                        graphics_raw[get_IOR(0x44)][j] = pixel_data;
+                                                        //graphics_raw[get_IOR(0x44)][j] = pixel_data; // Version missing palettes
+                                                        if (sprite_attr & 0x10) {
+                                                                graphics_raw[get_IOR(0x44)][j] = (get_IOR(0x49) >> (pixel_data * 2)) & 0x3;
+                                                        }
+                                                        else {
+                                                                graphics_raw[get_IOR(0x44)][j] = (get_IOR(0x48) >> (pixel_data * 2)) & 0x3;
+                                                        }
 
-                                                        // TODO: palettes!!!!----------------------------------------------------------
                                                 }
 
                                                 tile_1 <<= 1;
@@ -256,9 +265,13 @@ drawline_lcd()
                                                 pixel_data |= ((tile_2) & 0x80) >> 6;
 
                                                 if (pixel_data != 0){           // Ignoring transparent
-                                                        graphics_raw[get_IOR(0x44)][j] = pixel_data;
-
-                                                        // TODO: palettes!!!!----------------------------------------------------------
+                                                        //graphics_raw[get_IOR(0x44)][j] = pixel_data; // Version missing palettes
+                                                        if (sprite_attr & 0x10) {
+                                                                graphics_raw[get_IOR(0x44)][j] = (get_IOR(0x49) >> (pixel_data * 2)) & 0x3;
+                                                        }
+                                                        else {
+                                                                graphics_raw[get_IOR(0x44)][j] = (get_IOR(0x48) >> (pixel_data * 2)) & 0x3;
+                                                        }
                                                 }
 
                                                 tile_1 <<= 1;

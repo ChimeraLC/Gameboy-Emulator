@@ -12,7 +12,7 @@
 // Verbosity
 int verbose = 0;
 int debug = 0;
-int start = 0;
+int start = 1;
 
 // Rom reading
 uint8_t *load_rom;           // ROM from cartridge
@@ -69,9 +69,14 @@ main(int argc, char **argv)
                                 return -1;
                         }
                         break;
+                case 'h':
+                        usage();
+                        break;
                 case '?':
                         if (optopt == 's')
                         fprintf (stderr, "Option -%c requires an argument.\n", optopt);
+                        else
+                        usage();
                         return -1;
                 default:
                         abort ();
@@ -121,9 +126,11 @@ main(int argc, char **argv)
         // Debug setup
         if (debug) {
         verbose = 0;
+        
         for (int i = 0; i < start - 1; i ++) {
                 execute_frame();
         }
+        
         verbose = 2;
         while (active) {
                 // Get SDL events
@@ -136,7 +143,6 @@ main(int argc, char **argv)
                                         break;
                                         case SDLK_a:
                                         execute_frame();
-                                        update_SDL();
                                         break;
                                         case SDLK_s:
                                         verbose = 0;
@@ -291,8 +297,6 @@ main(int argc, char **argv)
                 // Rendering
                 update_timers(curr_cycles);
 
-                // TIming?
-                //total_cycles += curr_cycles;
         }
         }
         if (verbose) {
@@ -456,4 +460,16 @@ execute_frame()
         // Update timers
         update_timers(curr_cycles);
 
+}
+
+void
+usage()
+{
+    fprintf(stderr, "Usage: main [-bhdvV] <filename>\n");
+    fprintf(stderr, "Options\n");\
+    fprintf(stderr, "\t-b         Skip boot rom.\n");
+    fprintf(stderr, "\t-h         Print this message.\n");
+    fprintf(stderr, "\t-d         Initiate in debug mode.\n");
+    fprintf(stderr, "\t-v         Print basic debug messages.\n");
+    fprintf(stderr, "\t-V         Print additional debug info.\n");
 }

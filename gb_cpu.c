@@ -217,17 +217,21 @@ read_mem(uint16_t addr)
                 __attribute__ ((fallthrough));                                  // Might want to fix this
                 case 0x1000:
                 case 0x2000:
-                case 0x3000:    // ROM bank 00
-                // MBC1
-                if (cartridge_mapper == 1) {
+                case 0x3000:    // Lower ROM
+                // ROM only
+                if (cartridge_mapper == 0) {
+                        return ROM[addr];
+                }
+                // MBC1, ROM bank X0
+                else if (cartridge_mapper == 1) {
                         if (RMODE & 0x1) {
                                 return ROM[addr + ((RBANK2 & 0x3) << 5) * ROM_BANK_SIZE];
                         }
                         else {
                                 return ROM[addr];
-                        }
+                        }                                                       // Check if doesn't go outside the stuff?
                 }
-                // MBC3
+                // MBC3, ROM bank 00
                 else if (cartridge_mapper == 3) {
                         return ROM[addr];
                 }
@@ -235,14 +239,18 @@ read_mem(uint16_t addr)
                 case 0x4000:
                 case 0x5000:
                 case 0x6000:
-                case 0x7000:   // ROM bank 01~NN                                   // TODO: <16 mb roms
-                // MBC1
-                if (cartridge_mapper == 1) {
+                case 0x7000:    // Upper ROM
+                // ROM only
+                if (cartridge_mapper == 0) {
+                        return ROM[addr];
+                }
+                // MBC1, ROM bank 01~7F
+                else if (cartridge_mapper == 1) {
                         return ROM[addr - ROM_ADDR + 
                                 ((RBANK1 & bank_mask) + ((RBANK2 & 0x3) << 5) - 1) * 0x4000];          
                 }
-                // MBC3
-                if (cartridge_mapper == 3) {
+                // MBC3, ROM bank 01~7F
+                else if (cartridge_mapper == 3) {
                         return ROM[addr - ROM_ADDR + (RBANK1 & 0x7F) * 0x4000];
                 }
                 break;
@@ -252,8 +260,12 @@ read_mem(uint16_t addr)
                 break;
                 case 0xA000:
                 case 0xB000:    // External Ram
-                // MBC1
-                if (cartridge_mapper == 1) {
+                // ROM only, RAM bank 00
+                if (cartridge_mapper == 0) {
+                        return ERAM[addr - ERAM_ADDR];
+                }
+                // MBC1, RAM bank 00~03
+                else if (cartridge_mapper == 1) {
                         if ((RAMG & 0x0F) == 0x0A) {      // Check if RAM enabled
                                 if (RMODE & 0x1) {
                                         return ERAM[addr - ERAM_ADDR + (RBANK2 & 0x3) * ERAM_BANK_SIZE];
@@ -264,7 +276,7 @@ read_mem(uint16_t addr)
                         }
                         return 0;
                 }
-                // MBC3
+                // MBC3, RAM bank 00~03
                 else if (cartridge_mapper == 3) {
                         if ((RAMG & 0x0F) == 0x0A) {      // Check if RAM enabled
                                 // RAM Bank Number
@@ -398,7 +410,7 @@ write_mem(uint16_t addr, uint8_t val)
                                 RBANK1 |= 0x1;
                         }
                 }
-                if (cartridge_mapper == 3) {      // MBC3
+                else if (cartridge_mapper == 3) {      // MBC3
                         if ((RBANK1 & 0x7F) == 0x00) {
                                 RBANK1 |= 0x1;
                         }
@@ -410,8 +422,9 @@ write_mem(uint16_t addr, uint8_t val)
                 break;
                 case 0x6000:
                 case 0x7000:    // Banking mode
-                if (cartridge_mapper == 1)
+                if (cartridge_mapper == 1) {
                         RMODE = val;
+                }
                 else if (cartridge_mapper == 3) {
                         if (MBC3_cwrite == 0x0 && val == 0x1) 
                                 latch_clock();
@@ -2637,7 +2650,7 @@ print_registers()
         printf("BC: %X\n", reg.bc);
         printf("DE: %X\n", reg.de);
         printf("HL: %X\n", reg.hl);
-        printf("PC: %X, SP: %X\n", PC, SP);
+        printf("PC: %X, SP: %X, OP: %X\n", PC, SP, read_mem(PC));
         printf("IE: %X, IF: %X\n", IE, IF);
         printf("IME: %X, HALT: %X\n", IME, HALT);
         printf("Opcodes run: %ld\n", opcodes_run);
