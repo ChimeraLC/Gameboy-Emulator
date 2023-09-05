@@ -13,6 +13,7 @@
 int verbose = 0;
 int debug = 0;
 int start = 1;
+FILE *output;
 
 // Rom reading
 uint8_t *load_rom;           // ROM from cartridge
@@ -46,7 +47,7 @@ main(int argc, char **argv)
 {
         // Checking for verbose flag
         char c;
-        while ((c = getopt (argc, argv, "bvdVs:")) != -1) {
+        while ((c = getopt (argc, argv, "bvdVs:l")) != -1) {
                 switch (c)
                 {
                 case 'v':       // Verbose flags
@@ -130,7 +131,6 @@ main(int argc, char **argv)
         for (int i = 0; i < start - 1; i ++) {
                 execute_frame();
         }
-        
         verbose = 2;
         while (active) {
                 // Get SDL events
@@ -472,4 +472,5 @@ usage()
     fprintf(stderr, "\t-d         Initiate in debug mode.\n");
     fprintf(stderr, "\t-v         Print basic debug messages.\n");
     fprintf(stderr, "\t-V         Print additional debug info.\n");
+    fprintf(stderr, "\t-l         Log to the file Log.txt\n");
 }

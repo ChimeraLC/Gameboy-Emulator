@@ -21,7 +21,6 @@ uint8_t IOR[0x80];      // I/O Registers
 uint8_t HRAM[0x7F];     // High RAM
 
 uint8_t eram_bank;      // Switchable ERAM bank if any
-uint8_t wram_bank;      // Switchable WRAM bank 1-7
 uint16_t bank_mask;     // Mask for smaller ROM sizes
 
 // Basic DMG boot rom
@@ -61,6 +60,27 @@ uint8_t OP_CYCLES[0x100] = {
 	8,12,12, 0,12,16, 8,32, 8, 8,12, 0,12, 0, 8,32,
 	12,12, 8, 0, 0,16, 8,32,16, 4,16, 0, 0, 0, 8,32,
 	12,12, 8, 4, 0,16, 8,32,12, 8,16, 4, 0, 0, 8,32
+};
+
+// Cycles for CB opcodes
+uint8_t CB_CYCLES[0x400] = {
+	8,8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,
+	8,8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,
+	8,8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,
+	8,8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,
+	8,8,8,8,8,8,12,8,8,8,8,8,8,8,12,8,
+	8,8,8,8,8,8,12,8,8,8,8,8,8,8,12,8,
+	8,8,8,8,8,8,12,8,8,8,8,8,8,8,12,8,
+	8,8,8,8,8,8,12,8,8,8,8,8,8,8,12,8,
+	8,8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,
+	8,8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,
+	8,8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,
+	8,8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,
+	8,8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,
+	8,8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,
+	8,8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,
+	8,8,8,8,8,8,16,8,8,8,8,8,8,8,16,8
+
 };
 
 
@@ -141,12 +161,12 @@ init_cpu(uint8_t *rom, int num_banks, int cartridge, bool boot)
         ROM = rom;
         // Saving cartridge type
         cartridge_mapper = cartridge;
+        
         // Initial register and pointer values
         PC = 0x0000;
         div_lower = 0;
         tima_lower = 0;
         lcd_cycles = 0;
-        wram_bank = 1;
         eram_bank = 1;
 
         // Setting up bank mask for reading
@@ -256,7 +276,7 @@ read_mem(uint16_t addr)
                 break;
                 case 0x8000:
                 case 0x9000:   // VRAM
-                return VRAM[addr - VRAM_ADDR + (IOR[0x4F] & 0x1) * 0x2000];
+                return VRAM[addr - VRAM_ADDR];
                 break;
                 case 0xA000:
                 case 0xB000:    // External Ram
@@ -295,14 +315,14 @@ read_mem(uint16_t addr)
                 return WRAM[addr - WRAM_ADDR];
                 break;
                 case 0xD000:    // Working ram banks 1~7                        // Probably unecessary without CBG
-                return WRAM[addr - WRAM_ADDR + (wram_bank - 1) * 0x1000];
+                return WRAM[addr - WRAM_ADDR];
                 break;
                 case 0xE000:    // Echo rom
                 return WRAM[addr - WRAM_ADDR - 0x2000];
                 break;
                 case 0xF000:
                 if (addr < OAM_ADDR)    // Echo rom
-                        return WRAM[addr - WRAM_ADDR + (wram_bank - 1) * 0x1000 - 0x2000];
+                        return WRAM[addr - WRAM_ADDR - 0x2000];
                 else if (addr < 0xFEA0) // OAM
                         return OAM[addr - OAM_ADDR];
                 else if (addr < IOR_ADDR)    // Unused memory
@@ -381,7 +401,8 @@ read_mem(uint16_t addr)
                                 return IOR[0x4B];
                                 break;
                         }
-                        return IOR[addr - IOR_ADDR];
+                        return 0xFF;
+                        //return IOR[addr - IOR_ADDR];
                 }
                 else if (addr < 0xFFFF) // HRAM
                         return HRAM[addr - HRAM_ADDR];
@@ -466,14 +487,14 @@ write_mem(uint16_t addr, uint8_t val)
                 WRAM[addr - WRAM_ADDR] = val;
                 break;
                 case 0xD000:    // WRAM banks 1-7
-                WRAM[addr - WRAM_ADDR + (wram_bank - 1) * 0x1000] = val;
+                WRAM[addr - WRAM_ADDR] = val;
                 break;
                 case 0xE000:    // ECHO RAM
                 WRAM[addr - WRAM_ADDR - 0x2000] = val;
                 break;
                 case 0xF000:
                 if (addr < OAM_ADDR)    // ECHO RAM
-                        WRAM[addr - WRAM_ADDR + (wram_bank - 1) * 0x1000 - 0x2000] = val;
+                        WRAM[addr - WRAM_ADDR - 0x2000] = val;
                 else if (addr < 0xFEA0)
                         OAM[addr - OAM_ADDR] = val;
                 else if (addr < IOR_ADDR)
@@ -2023,6 +2044,8 @@ execute()                                                                       
                         break;
                         case 0x0B:      // Two byte instructions
                         cbcode = read_mem(PC++);
+                        // Getting cycles required for CB instructions
+                        cpu_cycles = CB_CYCLES[cbcode];
                         switch(cbcode & 0x07) { //Relevant register
                                 case 0x00:
                                 n = reg.b;
@@ -2680,6 +2703,7 @@ log_memory()
         }
         fclose(output);
 }
+
 
 /*
  * Triggered when joystick changes
