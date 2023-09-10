@@ -12,7 +12,7 @@ Directional input: Arrow Keys
 
 A: x
 
-B; z
+B: z
 
 Select: s
 
