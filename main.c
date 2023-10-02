@@ -17,6 +17,8 @@ FILE *output;
 
 // Rom reading
 uint8_t *load_rom;           // ROM from cartridge
+uint8_t *load_save;             // Save file
+bool has_save = false;                 // Whether to load a save file
 int cartridge_type; // Cartridge banking type
 char *cartridge_types[] = {"ROM ONLY", "MBC1", "MBC2", "MBC3"};
 // Saving read rom/ram sizes
@@ -47,7 +49,7 @@ main(int argc, char **argv)
 {
         // Checking for verbose flag
         char c;
-        while ((c = getopt (argc, argv, "bvdVs:l")) != -1) {
+        while ((c = getopt (argc, argv, "bvdsVl")) != -1) {
                 switch (c)
                 {
                 case 'v':       // Verbose flags
@@ -63,12 +65,15 @@ main(int argc, char **argv)
                 case 'b':       // Skipping boot rom
                         boot_flag = false;
                         break;
-                case 's':       // Start point of debug
+                case 's':       // Loading save file
+                        has_save = true;
+                        /*
                         start = atoi(optarg);
                         if (start < 0) {
                                 printf("Start point must be nonnegative\n");
                                 return -1;
                         }
+                        */
                         break;
                 case 'h':
                         usage();
@@ -111,7 +116,7 @@ main(int argc, char **argv)
         }
 
         // Initialize Memory
-        init_cpu(load_rom, num_banks, cartridge_type, boot_flag);
+        init_cpu(load_rom, load_save, num_banks, cartridge_type, boot_flag);
         init_gpu();
 
         // Initialize SDL
@@ -387,6 +392,29 @@ read_rom(char *filename)
         if (verbose) printf("The RAM has size %X\n", ram_size);
 
         // TODO: save files
+        if (has_save) {
+                // Get save name
+                char save_name[100];
+                sprintf(save_name, filename);
+                // Replace .gb with .sav
+                char *suffix = strstr(save_name, ".gb");
+                if (suffix == NULL) {
+                        printf("Error with filename");
+                        return -1;
+                }
+                sprintf(suffix, ".sav");
+                if (verbose) printf("Loading save at %s\n", save_name);
+                // Attempt to open file
+                FILE *save_file = fopen(save_name, "rb");
+                if (!save_file) {
+                        printf("Given save file does not exist\n");
+                        return -1;
+                }
+                // Copying into memory
+                load_save = (uint8_t*)malloc(ram_size);
+                fread(load_save, ram_size, 1, save_file);
+                fclose(save_file);
+        }
 
         // Returning without errors
         return 0;
@@ -468,6 +496,7 @@ usage()
     fprintf(stderr, "Usage: main [-bhdvV] <filename>\n");
     fprintf(stderr, "Options\n");\
     fprintf(stderr, "\t-b         Skip boot rom.\n");
+    fprintf(stderr, "\t-s         Load save from this file.\n");
     fprintf(stderr, "\t-h         Print this message.\n");
     fprintf(stderr, "\t-d         Initiate in debug mode.\n");
     fprintf(stderr, "\t-v         Print basic debug messages.\n");
