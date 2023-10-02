@@ -4,7 +4,7 @@
 /*
  *	Function headers
  */
-void init_cpu(uint8_t *rom, int num_banks, int cartridge, bool boot);
+void init_cpu(uint8_t *rom, uint8_t *save, int num_banks, int cartridge, bool boot);
 uint8_t read_mem(uint16_t addr);
 void write_mem(uint16_t addr, uint8_t val);
 void update_timers(uint16_t cycles);

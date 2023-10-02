@@ -12,7 +12,7 @@
  *      Memory
  */
 
-uint8_t *ROM;           // ROM from cartridge
+uint8_t *ROM;           // ROM from cartridge   
 uint8_t VRAM[0x4000];   // Virtual RAM
 uint8_t ERAM[0x2000];   // External RAM
 uint8_t WRAM[0x8000];   // Working RAM
@@ -155,10 +155,14 @@ uint32_t nnnn;
 
 // Initialize the cpu values and copy rom from main
 void
-init_cpu(uint8_t *rom, int num_banks, int cartridge, bool boot)
+init_cpu(uint8_t *rom, uint8_t *save, int num_banks, int cartridge, bool boot)
 {
         // Save rom to self
         ROM = rom;
+        // Loading in save
+        if (save != NULL) {
+                printf("Savefile memory replacement should happen here\n");
+        }
         // Saving cartridge type
         cartridge_mapper = cartridge;
         
