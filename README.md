@@ -1,6 +1,6 @@
 # Gameboy-Emulator
 
-This is an emulator for the DMG-01 Nintendo Gameboy written in C. Currently, it only supports games that use MBC1 and MBC3 banking.
+This is an emulator for the DMG-01 Nintendo Game Boy written in C. Currently, it only supports games that use MBC1 and MBC3 banking.
 
 Usage: ./main.exe <.gb filename>
 
