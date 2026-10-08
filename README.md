@@ -1,5 +1,7 @@
 # Gameboy-Emulator
 
+![Example Gif](./extra/vid-emulator.gif)
+
 This is an emulator for the DMG-01 Nintendo Gameboy written in C. Currently, it only supports games that use MBC1 and MBC3 banking.
 
 Usage: ./main.exe <.gb filename>
