@@ -6,7 +6,7 @@ This is an emulator for the DMG-01 Nintendo Game Boy written in C. Currently, it
 
 Usage: ./main.exe <.gb filename>
 
-It requires SDL, does not support sound. Currently, the Super Mario Land game works reasonably well, but compatibility with other titles is limited (in many cases nonexistant).
+It requires SDL and does not support sound. Currently, the Super Mario Land game works reasonably well, but compatibility with other titles is limited (in many cases nonexistant).
 
 Controls:
 
